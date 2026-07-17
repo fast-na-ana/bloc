@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>bloc Dashboard</title>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts: Inter -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS with Config -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-container-high": "#dee9fc",
+                    "surface-bright": "#f8f9ff",
+                    "primary-fixed": "#e1e3e4",
+                    "on-tertiary": "#ffffff",
+                    "surface-container-lowest": "#ffffff",
+                    "inverse-primary": "#c5c7c8",
+                    "surface-container-highest": "#d9e3f6",
+                    "inverse-on-surface": "#eaf1ff",
+                    "background": "#f8f9ff",
+                    "on-surface-variant": "#444749",
+                    "on-primary": "#ffffff",
+                    "surface-container-low": "#eff4ff",
+                    "on-secondary": "#ffffff",
+                    "on-secondary-container": "#354585",
+                    "error": "#ba1a1a",
+                    "primary-container": "#f8f9fa",
+                    "primary": "#5c5f60",
+                    "on-primary-container": "#707273",
+                    "surface-container": "#e6eeff",
+                    "tertiary-fixed-dim": "#eac33e",
+                    "primary-fixed-dim": "#c5c7c8",
+                    "surface-tint": "#5c5f60",
+                    "outline-variant": "#c4c7c8",
+                    "surface-dim": "#d0dbed",
+                    "secondary-fixed": "#dde1ff",
+                    "on-tertiary-fixed": "#231b00",
+                    "error-container": "#ffdad6",
+                    "tertiary-container": "#fff8ef",
+                    "on-error-container": "#93000a",
+                    "tertiary": "#735c00",
+                    "on-error": "#ffffff",
+                    "on-primary-fixed": "#191c1d",
+                    "secondary-fixed-dim": "#b8c4ff",
+                    "on-secondary-fixed": "#001354",
+                    "tertiary-fixed": "#ffe086",
+                    "secondary": "#4b5a9c",
+                    "on-primary-fixed-variant": "#454748",
+                    "on-surface": "#121c2a",
+                    "secondary-container": "#a6b5fd",
+                    "on-tertiary-fixed-variant": "#574500",
+                    "on-background": "#121c2a",
+                    "surface": "#f8f9ff",
+                    "inverse-surface": "#27313f",
+                    "on-tertiary-container": "#8a6f00",
+                    "on-secondary-fixed-variant": "#334282",
+                    "outline": "#747879",
+                    "surface-variant": "#d9e3f6"
+            },
+            "borderRadius": {
+                    "DEFAULT": "1rem",
+                    "lg": "2rem",
+                    "xl": "3rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "container-max-width": "1440px",
+                    "widget-gap": "1.5rem",
+                    "widget-padding": "2rem",
+                    "section-margin": "3rem"
+            },
+            "fontFamily": {
+                    "headline-lg": ["Inter"],
+                    "body-md": ["Inter"],
+                    "headline-md": ["Inter"],
+                    "label-lg": ["Inter"],
+                    "display-lg": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "label-sm": ["Inter"]
+            },
+            "fontSize": {
+                    "headline-lg": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                    "headline-md": ["24px", {"lineHeight": "1.3", "fontWeight": "600"}],
+                    "label-lg": ["14px", {"lineHeight": "1.4", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                    "display-lg": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "body-lg": ["18px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                    "label-sm": ["12px", {"lineHeight": "1.2", "letterSpacing": "0.05em", "fontWeight": "600"}]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+        /* Custom Hairline Gradient Border for Widgets */
+        .glass-widget {
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            box-shadow: 0px 2px 4px rgba(0,0,0,0.02), 0px 20px 50px rgba(0,0,0,0.05);
+            position: relative;
+            border-radius: 2rem; /* Tailwind 'lg' in config */
+        }
+        .glass-widget::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 2rem;
+            padding: 1px;
+            background: linear-gradient(to bottom right, rgba(255,255,255,0.8), rgba(255,255,255,0.1));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+        }
+
+        /* Procedural Aura Shader Background Fallback */
+        .aura-bg {
+            background: 
+                radial-gradient(circle at 15% 50%, rgba(217, 227, 246, 0.6), transparent 50%),
+                radial-gradient(circle at 85% 30%, rgba(248, 249, 255, 0.8), transparent 50%),
+                radial-gradient(circle at 50% 80%, rgba(221, 225, 255, 0.5), transparent 50%),
+                #f8f9ff;
+        }
+    </style>
+</head>
+<body class="text-on-surface font-body-md bg-background overflow-hidden selection:bg-secondary-container selection:text-on-secondary-container">
+<!-- Background Shader from Prompt Placeholder -->
+<div class="fixed inset-0 z-[-1] aura-bg" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuArX3YevQMCS103IqDp3eWqpAFnNTI1s4hBunxTd-a_uKNH5W4a3jM43n5Bwoy1Ci-XS8NG2wQVx0TXUVfQ87FoGhYA7YtdcO7C2YRtn7OmZDNYN_MZ9RobqhB_wpMf1DzWieAN-pR3Y1_qFsjPUpi_xTAkmlxh1qG7SHoOTn6EGUMTvs-snEMuTO1pZs9Ru0-mE_JMepCp4kEiObNDglP3uVzUmXU7PYPCqTQg5q9cuM1QSBe72GB0'); background-size: cover; background-position: center;"></div>
+<div class="flex h-screen w-full relative">
+<!-- SideNavBar -->
+<!-- Active Tab: Dashboard -->
+<nav class="fixed left-0 top-0 z-20 flex flex-col bg-white/10 dark:bg-black/10 backdrop-blur-3xl rounded-lg m-6 w-64 h-[calc(100vh-3rem)] border border-white/40 dark:border-white/10 shadow-[0px_20px_50px_rgba(0,0,0,0.05)]">
+<!-- Brand Logo -->
+<div class="p-8 pb-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-gradient-to-tr from-tertiary-fixed-dim to-secondary-container flex items-center justify-center shadow-inner">
+<span class="material-symbols-outlined text-white text-[20px]" style="font-variation-settings: 'FILL' 1;">widgets</span>
+</div>
+<span class="text-headline-md font-headline-md font-bold text-on-surface dark:text-inverse-on-surface lowercase">bloc</span>
+</div>
+<p class="text-label-sm font-label-sm text-on-surface-variant mt-2 uppercase tracking-widest pl-13">general</p>
+</div>
+<!-- Navigation Links -->
+<div class="flex flex-col gap-2 px-4 py-4 flex-1">
+<!-- Dashboard (Active) -->
+<a class="flex items-center gap-3 px-4 py-3 bg-white/80 dark:bg-white/20 text-on-surface dark:text-inverse-on-surface rounded-full shadow-sm transition-all duration-300 scale-95 active:scale-90 text-label-lg font-label-lg group" href="#">
+<span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">grid_view</span>
+<span>Dashboard</span>
+</a>
+<!-- My Sessions -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant dark:text-surface-variant hover:bg-white/20 dark:hover:bg-white/5 rounded-full transition-all duration-300 hover:backdrop-blur-2xl active:scale-90 text-label-lg font-label-lg group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors">play_circle</span>
+<span>My Sessions</span>
+</a>
+<!-- Popular Sessions -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant dark:text-surface-variant hover:bg-white/20 dark:hover:bg-white/5 rounded-full transition-all duration-300 hover:backdrop-blur-2xl active:scale-90 text-label-lg font-label-lg group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors">analytics</span>
+<span>Popular Sessions</span>
+</a>
+<!-- Community -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant dark:text-surface-variant hover:bg-white/20 dark:hover:bg-white/5 rounded-full transition-all duration-300 hover:backdrop-blur-2xl active:scale-90 text-label-lg font-label-lg group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors">group</span>
+<span>Community</span>
+</a>
+<!-- Download -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant dark:text-surface-variant hover:bg-white/20 dark:hover:bg-white/5 rounded-full transition-all duration-300 hover:backdrop-blur-2xl active:scale-90 text-label-lg font-label-lg group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors">download</span>
+<span>Download</span>
+</a>
+</div>
+<!-- Logout -->
+<div class="p-4 mt-auto">
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant dark:text-surface-variant hover:bg-white/20 dark:hover:bg-white/5 rounded-full transition-all duration-300 hover:backdrop-blur-2xl active:scale-90 text-label-lg font-label-lg group" href="#">
+<span class="material-symbols-outlined group-hover:text-error transition-colors">logout</span>
+<span>Logout</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col ml-[280px] w-[calc(100%-280px)] h-screen overflow-hidden relative z-10">
+<!-- TopAppBar -->
+<header class="flex justify-between items-center w-full px-12 py-6 bg-transparent flat no shadows z-20 flex-shrink-0">
+<!-- Search Bar -->
+<div class="relative w-96">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="w-full bg-white/40 backdrop-blur-md border border-white/40 text-on-surface placeholder:text-on-surface-variant text-label-lg font-label-lg rounded-full py-3 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-secondary/30 focus:border-secondary/50 transition-all shadow-[0_4px_12px_rgba(0,0,0,0.02)]" placeholder="Search..." type="text"/>
+</div>
+<!-- Right Actions -->
+<div class="flex items-center gap-4">
+<button class="w-12 h-12 rounded-full bg-white/40 backdrop-blur-md border border-white/40 flex items-center justify-center text-on-surface-variant hover:bg-white/60 transition-all shadow-[0_4px_12px_rgba(0,0,0,0.02)] active:scale-95">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<div class="flex items-center gap-3 pl-4 border-l border-white/30">
+<div class="text-right hidden md:block">
+<p class="text-label-lg font-label-lg text-on-surface">Andrew</p>
+<p class="text-label-sm font-label-sm text-on-surface-variant">Account: Admin</p>
+</div>
+<img alt="User avatar" class="w-12 h-12 rounded-full border-2 border-white/60 shadow-sm object-cover" data-alt="A close-up, high-quality portrait of a professional user, well-lit with soft natural light, conveying a sense of calm competence. Minimalist background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDMaD5lH3UvPoDHn8-2x7pGHMYdSNuAF1OIbL4a_5oJx8CzCBRzf7HTXpVpU6MQ-NY85sYinHWDHxluknuUWzeIadHGe3QWQNtzfi4dZyXviJSlVjx_rl_0htjPGF50pd0LjodMPZxb7grbBlwAabAse7c3EnkXn1_0Dv4hmdHMaSR0E5Kf4taLRwuIO4UJZ4cqJxFuncZxusLaeR2k2xc87bm_-3rLLX4JCBe_PpvE-GGrZcgH81Qv"/>
+</div>
+</div>
+</header>
+<!-- Dashboard Canvas -->
+<div class="flex-1 overflow-y-auto px-12 pb-12 pt-4">
+<!-- Welcome Section -->
+<div class="mb-8 pl-2">
+<h1 class="text-display-lg font-display-lg text-on-surface tracking-tight mb-2">Good Morning, <span class="font-bold text-secondary">Andrew</span></h1>
+<p class="text-body-lg font-body-lg text-on-surface-variant">Here is what's happening with your business today.</p>
+</div>
+<!-- Masonry / Bento Grid -->
+<div class="grid grid-cols-12 gap-widget-gap auto-rows-[minmax(180px,auto)]">
+<!-- Widget 1: Today's Summary (Span 8) -->
+<div class="col-span-12 xl:col-span-8 row-span-2 glass-widget flex flex-col p-8 group">
+<div class="flex justify-between items-start mb-6">
+<h2 class="text-headline-md font-headline-md text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary">monitoring</span>
+                                Today's Summary
+                            </h2>
+<button class="text-label-sm font-label-sm px-4 py-2 rounded-full bg-white/30 hover:bg-white/50 transition-colors border border-white/20">View Detailed Report</button>
+</div>
+<div class="grid grid-cols-3 gap-6 mb-8">
+<div class="p-4 rounded-xl bg-white/20 border border-white/30 relative overflow-hidden">
+<div class="absolute top-0 right-0 p-3 opacity-20"><span class="material-symbols-outlined text-4xl text-secondary">trending_up</span></div>
+<p class="text-label-sm font-label-sm text-on-surface-variant mb-1">Total Sales</p>
+<p class="text-headline-lg font-headline-lg text-on-surface">$12,450</p>
+<p class="text-label-sm font-label-sm text-secondary mt-2 flex items-center"><span class="material-symbols-outlined text-[16px] mr-1">arrow_upward</span> +14%</p>
+</div>
+<div class="p-4 rounded-xl bg-white/20 border border-white/30 relative overflow-hidden">
+<div class="absolute top-0 right-0 p-3 opacity-20"><span class="material-symbols-outlined text-4xl text-tertiary-fixed-dim">shopping_bag</span></div>
+<p class="text-label-sm font-label-sm text-on-surface-variant mb-1">Purchases</p>
+<p class="text-headline-lg font-headline-lg text-on-surface">$3,120</p>
+<p class="text-label-sm font-label-sm text-tertiary-fixed-dim mt-2 flex items-center"><span class="material-symbols-outlined text-[16px] mr-1">arrow_downward</span> -5%</p>
+</div>
+<div class="p-4 rounded-xl bg-white/20 border border-white/30 relative overflow-hidden">
+<div class="absolute top-0 right-0 p-3 opacity-20"><span class="material-symbols-outlined text-4xl text-secondary-container">account_balance_wallet</span></div>
+<p class="text-label-sm font-label-sm text-on-surface-variant mb-1">Cash on Hand</p>
+<p class="text-headline-lg font-headline-lg text-on-surface">$45,890</p>
+<p class="text-label-sm font-label-sm text-secondary mt-2 flex items-center"><span class="material-symbols-outlined text-[16px] mr-1">check_circle</span> Stable</p>
+</div>
+</div>
+<!-- Faux Chart Area -->
+<div class="flex-1 rounded-xl bg-gradient-to-b from-white/10 to-transparent border border-white/20 relative flex items-end p-4">
+<!-- Abstract curved line representing chart -->
+<svg class="w-full h-full absolute inset-0 text-secondary opacity-60 drop-shadow-md" preserveaspectratio="none" viewbox="0 0 100 40">
+<path d="M0 30 Q 20 10, 40 25 T 80 15 T 100 5 L 100 40 L 0 40 Z" fill="url(#chart-gradient)" opacity="0.2"></path>
+<path d="M0 30 Q 20 10, 40 25 T 80 15 T 100 5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"></path>
+<defs>
+<lineargradient id="chart-gradient" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="currentColor"></stop>
+<stop offset="100%" stop-color="currentColor" stop-opacity="0"></stop>
+</lineargradient>
+</defs>
+</svg>
+</div>
+</div>
+<!-- Widget 4: Quick Actions (Span 4) -->
+<div class="col-span-12 xl:col-span-4 row-span-1 glass-widget flex flex-col p-8">
+<h2 class="text-headline-md font-headline-md text-on-surface mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary">bolt</span>
+                            Quick Actions
+                        </h2>
+<div class="flex flex-col gap-4">
+<button class="w-full bg-secondary hover:bg-secondary/90 text-white rounded-full py-4 px-6 flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 text-label-lg font-label-lg font-semibold">
+<span class="material-symbols-outlined">add_circle</span>
+                                New Sale
+                            </button>
+<button class="w-full bg-white/40 hover:bg-white/60 border border-white/50 text-on-surface rounded-full py-4 px-6 flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95 text-label-lg font-label-lg font-semibold">
+<span class="material-symbols-outlined">receipt_long</span>
+                                New Purchase
+                            </button>
+<button class="w-full bg-white/20 hover:bg-white/40 border border-white/30 text-on-surface rounded-full py-4 px-6 flex items-center justify-center gap-2 transition-all active:scale-95 text-label-lg font-label-lg">
+<span class="material-symbols-outlined">person_add</span>
+                                Add Client
+                            </button>
+</div>
+</div>
+<!-- Widget 2: Pending Reminders (Span 4) -->
+<div class="col-span-12 xl:col-span-4 row-span-1 glass-widget flex flex-col p-8">
+<div class="flex justify-between items-center mb-6">
+<h2 class="text-headline-md font-headline-md text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-tertiary-fixed-dim">schedule</span>
+                                Reminders
+                            </h2>
+<span class="bg-tertiary-fixed-dim/20 text-tertiary-fixed-dim text-label-sm font-label-sm px-2 py-1 rounded-full">3 Pending</span>
+</div>
+<div class="flex flex-col gap-4 flex-1 overflow-y-auto pr-2">
+<div class="flex items-start gap-4 p-3 rounded-xl hover:bg-white/30 transition-colors group cursor-pointer border border-transparent hover:border-white/20">
+<div class="w-2 h-2 rounded-full bg-tertiary-fixed-dim mt-2"></div>
+<div>
+<p class="text-body-md font-body-md text-on-surface font-medium">Follow up with Acme Corp</p>
+<p class="text-label-sm font-label-sm text-on-surface-variant">Due today, 2:00 PM</p>
+</div>
+</div>
+<div class="flex items-start gap-4 p-3 rounded-xl hover:bg-white/30 transition-colors group cursor-pointer border border-transparent hover:border-white/20">
+<div class="w-2 h-2 rounded-full bg-error mt-2"></div>
+<div>
+<p class="text-body-md font-body-md text-on-surface font-medium">Review Q3 Tax Documents</p>
+<p class="text-label-sm font-label-sm text-error">Overdue by 1 day</p>
+</div>
+</div>
+<div class="flex items-start gap-4 p-3 rounded-xl hover:bg-white/30 transition-colors group cursor-pointer border border-transparent hover:border-white/20">
+<div class="w-2 h-2 rounded-full bg-secondary-fixed mt-2"></div>
+<div>
+<p class="text-body-md font-body-md text-on-surface font-medium">Send weekly status report</p>
+<p class="text-label-sm font-label-sm text-on-surface-variant">Tomorrow, 9:00 AM</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Widget 3: Recent Invoices (Span 7) -->
+<div class="col-span-12 xl:col-span-7 row-span-1 glass-widget flex flex-col p-8">
+<div class="flex justify-between items-center mb-6">
+<h2 class="text-headline-md font-headline-md text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary">receipt</span>
+                                Recent Invoices
+                            </h2>
+<button class="text-secondary hover:text-secondary-container transition-colors text-label-sm font-label-sm font-semibold flex items-center gap-1">
+                                View All <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+<div class="w-full overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="border-b border-white/20">
+<th class="py-3 px-4 text-label-sm font-label-sm text-on-surface-variant font-medium">Invoice ID</th>
+<th class="py-3 px-4 text-label-sm font-label-sm text-on-surface-variant font-medium">Client</th>
+<th class="py-3 px-4 text-label-sm font-label-sm text-on-surface-variant font-medium">Amount</th>
+<th class="py-3 px-4 text-label-sm font-label-sm text-on-surface-variant font-medium">Status</th>
+</tr>
+</thead>
+<tbody>
+<tr class="border-b border-white/10 hover:bg-white/20 transition-colors">
+<td class="py-4 px-4 text-body-md font-body-md text-on-surface font-medium">#INV-0042</td>
+<td class="py-4 px-4 text-body-md font-body-md text-on-surface-variant">Global Tech Industries</td>
+<td class="py-4 px-4 text-body-md font-body-md text-on-surface">$4,500.00</td>
+<td class="py-4 px-4">
+<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-white/40 text-secondary border border-white/50">Paid</span>
+</td>
+</tr>
+<tr class="border-b border-white/10 hover:bg-white/20 transition-colors">
+<td class="py-4 px-4 text-body-md font-body-md text-on-surface font-medium">#INV-0043</td>
+<td class="py-4 px-4 text-body-md font-body-md text-on-surface-variant">Stark Dynamics</td>
+<td class="py-4 px-4 text-body-md font-body-md text-on-surface">$12,800.00</td>
+<td class="py-4 px-4">
+<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-tertiary-fixed-dim/20 text-tertiary-fixed-dim border border-tertiary-fixed-dim/30">Pending</span>
+</td>
+</tr>
+<tr class="hover:bg-white/20 transition-colors">
+<td class="py-4 px-4 text-body-md font-body-md text-on-surface font-medium">#INV-0044</td>
+<td class="py-4 px-4 text-body-md font-body-md text-on-surface-variant">Wayne Enterprises</td>
+<td class="py-4 px-4 text-body-md font-body-md text-on-surface">$2,150.00</td>
+<td class="py-4 px-4">
+<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-white/40 text-secondary border border-white/50">Paid</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Widget 5: Top 5 Overdue (Span 5) -->
+<div class="col-span-12 xl:col-span-5 row-span-1 glass-widget flex flex-col p-8">
+<div class="flex justify-between items-center mb-6">
+<h2 class="text-headline-md font-headline-md text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-error">warning</span>
+                                Overdue Payers
+                            </h2>
+</div>
+<div class="flex flex-col gap-3">
+<div class="flex items-center justify-between p-3 rounded-xl bg-white/20 border border-white/30 hover:bg-white/40 transition-colors">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-error-container text-on-error-container flex items-center justify-center font-bold text-label-lg">OC</div>
+<div>
+<p class="text-label-lg font-label-lg text-on-surface">Oscorp Corp</p>
+<p class="text-label-sm font-label-sm text-error">14 Days Overdue</p>
+</div>
+</div>
+<p class="text-body-md font-body-md font-semibold text-on-surface">$8,400</p>
+</div>
+<div class="flex items-center justify-between p-3 rounded-xl bg-white/20 border border-white/30 hover:bg-white/40 transition-colors">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-tertiary-container text-on-tertiary-container flex items-center justify-center font-bold text-label-lg">MD</div>
+<div>
+<p class="text-label-lg font-label-lg text-on-surface">Massive Dynamic</p>
+<p class="text-label-sm font-label-sm text-tertiary-fixed-dim">5 Days Overdue</p>
+</div>
+</div>
+<p class="text-body-md font-body-md font-semibold text-on-surface">$3,200</p>
+</div>
+<div class="flex items-center justify-between p-3 rounded-xl bg-white/20 border border-white/30 hover:bg-white/40 transition-colors">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-white/50 text-on-surface-variant flex items-center justify-center font-bold text-label-lg">IG</div>
+<div>
+<p class="text-label-lg font-label-lg text-on-surface">InGen</p>
+<p class="text-label-sm font-label-sm text-tertiary-fixed-dim">1 Day Overdue</p>
+</div>
+</div>
+<p class="text-body-md font-body-md font-semibold text-on-surface">$1,150</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>
