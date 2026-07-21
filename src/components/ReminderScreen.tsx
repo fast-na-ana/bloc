@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Bell, Plus, Calendar, AlertCircle } from "lucide-react";
+import { EmptyState } from "./ui/EmptyState";
 
 interface Account {
   id: number;
@@ -18,6 +20,19 @@ interface Reminder {
   due_date: string;
   status: string;
 }
+
+const containerVars = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.05 }
+  }
+} as any;
+
+const itemVars = {
+  hidden: { opacity: 0, y: 15 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } }
+} as any;
 
 export function ReminderScreen() {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -61,22 +76,36 @@ export function ReminderScreen() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h2 className="text-3xl font-bold tracking-tight text-primary">Reminders & Follow-Ups</h2>
-        <p className="text-muted-foreground">Keep track of overdue payments and follow-up tasks.</p>
-      </div>
+    <motion.div 
+      variants={containerVars}
+      initial="hidden"
+      animate="show"
+      className="grid grid-cols-12 gap-6 h-full auto-rows-max"
+    >
+      {/* HEADER BAR */}
+      <motion.div variants={itemVars} className="col-span-12 glass-widget p-6 hover-lift flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center shadow-xs">
+            <Bell className="text-blue-600 h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-extrabold text-slate-900 leading-tight">
+              Reminders & Follow-Up Log
+            </h1>
+            <p className="text-slate-500 text-sm font-medium">Track payment promises, pending calls, and task deadlines</p>
+          </div>
+        </div>
+      </motion.div>
 
-      <div className="grid md:grid-cols-3 gap-6">
-        <Card className="md:col-span-1 h-fit">
-          <CardHeader>
-            <CardTitle>New Reminder</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Account</label>
+      {/* FORM CARD */}
+      <motion.div variants={itemVars} className="col-span-12 lg:col-span-4 glass-widget p-6 hover-lift flex flex-col justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-200 pb-3 mb-4">New Reminder</h2>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Account / Contact</label>
               <Select value={accountId} onValueChange={setAccountId}>
-                <SelectTrigger>
+                <SelectTrigger className="bg-white/80 border-slate-200 focus:ring-blue-500 text-slate-900 font-semibold">
                   <SelectValue placeholder="Select Account" />
                 </SelectTrigger>
                 <SelectContent>
@@ -86,49 +115,59 @@ export function ReminderScreen() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Note / Promise</label>
-              <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Promised to pay by Friday" />
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Note / Payment Promise</label>
+              <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Promised to pay balance by Friday" className="bg-white/80 border-slate-200 text-slate-900 font-semibold" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Due Date</label>
-              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Due Date</label>
+              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="bg-white/80 border-slate-200 text-slate-900 font-semibold" />
             </div>
-            <Button className="w-full" onClick={handleCreateReminder}>Add Reminder</Button>
-          </CardContent>
-        </Card>
-
-        <div className="md:col-span-2 space-y-4">
-          <h3 className="text-xl font-semibold">Upcoming & Pending</h3>
-          {reminders.length === 0 ? (
-            <div className="p-8 border border-dashed rounded-lg text-center text-muted-foreground">
-              No pending reminders.
-            </div>
-          ) : (
-            <div className="grid gap-4">
-              {reminders.map((rem, idx) => {
-                const isOverdue = new Date(rem.due_date) < new Date();
-                return (
-                  <Card key={idx} className={isOverdue ? "border-destructive/50 bg-destructive/5" : ""}>
-                    <CardContent className="p-4 flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold">{getAccountName(rem.account_id)}</p>
-                        <p className="text-sm text-muted-foreground">{rem.note}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className={`font-medium ${isOverdue ? "text-destructive" : ""}`}>
-                          {rem.due_date.split('T')[0]}
-                        </p>
-                        {isOverdue && <span className="text-[10px] uppercase tracking-wider font-bold text-destructive">Overdue</span>}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
+          </div>
         </div>
-      </div>
-    </div>
+
+        <div className="pt-6">
+          <Button onClick={handleCreateReminder} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md shadow-blue-600/20 transition-all cursor-pointer">
+            <Plus className="h-4 w-4 mr-2" /> Add Reminder
+          </Button>
+        </div>
+      </motion.div>
+
+      {/* REMINDERS LIST CARD */}
+      <motion.div variants={itemVars} className="col-span-12 lg:col-span-8 glass-widget p-6 hover-lift flex flex-col">
+        <h2 className="text-lg font-bold text-slate-900 border-b border-slate-200 pb-3 mb-4">Upcoming & Pending Log</h2>
+        {reminders.length === 0 ? (
+          <EmptyState icon={Bell} title="No Pending Reminders" description="All follow-up tasks are clear." />
+        ) : (
+          <div className="space-y-3 overflow-y-auto max-h-[500px] pr-1">
+            {reminders.map((rem, idx) => {
+              const isOverdue = new Date(rem.due_date) < new Date();
+              return (
+                <div key={idx} className={`p-4 rounded-xl border flex items-center justify-between transition-all ${isOverdue ? 'bg-rose-50/70 border-rose-200 text-rose-900' : 'bg-white/80 border-slate-200 text-slate-900'}`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`p-2 rounded-lg mt-0.5 ${isOverdue ? 'bg-rose-100 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>
+                      {isOverdue ? <AlertCircle className="h-4 w-4" /> : <Calendar className="h-4 w-4" />}
+                    </div>
+                    <div>
+                      <p className="font-extrabold text-sm text-slate-900">{getAccountName(rem.account_id)}</p>
+                      <p className="text-xs font-medium text-slate-600 mt-0.5">{rem.note}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${isOverdue ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'}`}>
+                      {rem.due_date.split('T')[0]}
+                    </span>
+                    {isOverdue && (
+                      <span className="block text-[10px] uppercase font-extrabold text-rose-600 mt-1">Overdue</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
   );
 }
+

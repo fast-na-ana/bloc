@@ -34,7 +34,7 @@ function App() {
   const renderView = () => {
     switch (activeView) {
       case "dashboard":
-        return <DashboardScreen />;
+        return <DashboardScreen onNavigate={setActiveView} />;
       case "invoices":
         return <InvoiceScreen />;
       case "payments":
@@ -50,7 +50,7 @@ function App() {
       case "reminders":
         return <ReminderScreen />;
       default:
-        return <DashboardScreen />;
+        return <DashboardScreen onNavigate={setActiveView} />;
     }
   };
 
