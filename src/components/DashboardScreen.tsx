@@ -2,7 +2,11 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { DollarSign, CheckSquare, Package, Receipt, CreditCard, ArrowUpRight, ShoppingBag } from "lucide-react";
 
-export function DashboardScreen() {
+interface DashboardScreenProps {
+  onNavigate?: (view: string) => void;
+}
+
+export function DashboardScreen({ onNavigate }: DashboardScreenProps) {
   const [sales, setSales] = useState(0);
   const [cashOnHand, setCashOnHand] = useState(0);
 
@@ -32,20 +36,87 @@ export function DashboardScreen() {
       animate="show"
       className="grid grid-cols-12 gap-6 h-full auto-rows-max"
     >
-      {/* 1. Performance Summary (Span 5, Row 1-2) */}
-      <motion.div variants={itemVars} className="col-span-12 xl:col-span-5 row-span-2 glass-widget flex flex-col p-6 hover-lift">
-        <h2 className="text-xl font-semibold text-on-surface mb-2">Performance Summary</h2>
+      {/* ROW 1: Executive Overview (Welcome Back + Cash Balance) */}
+      {/* 1. Welcome Back (Span 8 on lg+, 12 on sm/md) */}
+      <motion.div 
+        variants={itemVars} 
+        onClick={() => onNavigate?.("analytics")}
+        title="Click to view Account Rollup"
+        className="col-span-12 lg:col-span-8 glass-widget flex flex-col p-6 hover-lift relative overflow-hidden cursor-pointer transition-all hover:ring-2 hover:ring-blue-500/30"
+      >
+        {/* Decorative Blob */}
+        <div className="absolute -top-6 -right-6 w-24 h-24 bg-blue-100/50 backdrop-blur-2xl rounded-full border border-blue-200/60 pointer-events-none"></div>
+
+        <div className="flex items-center gap-4 mb-6 z-10">
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center shadow-xs">
+            <DollarSign className="text-blue-600 h-6 w-6" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-slate-900 leading-tight">Welcome Back,</h2>
+            <p className="text-slate-600 text-sm font-semibold">User (Admin)</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2 z-10 bg-slate-50/70 p-4 rounded-xl border border-slate-100">
+          <div>
+            <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider block">Cash In Hand</span>
+            <span className="font-extrabold text-slate-900 text-base">${cashOnHand.toFixed(2)}</span>
+          </div>
+          <div>
+            <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider block">Today's Sales</span>
+            <span className="font-extrabold text-slate-900 text-base">${sales.toFixed(2)}</span>
+          </div>
+          <div>
+            <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider block">Pending Reminders</span>
+            <span className="font-extrabold text-slate-900 text-base">5</span>
+          </div>
+          <div>
+            <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider block">Low Stock</span>
+            <span className="font-extrabold text-rose-600 text-base">10 items</span>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* 2. Cash Balance (Span 4 on lg+, 12 on sm/md) */}
+      <motion.div 
+        variants={itemVars} 
+        onClick={() => onNavigate?.("payments")}
+        title="Click to view Purchases & Cashflow"
+        className="col-span-12 lg:col-span-4 glass-widget flex flex-col items-center justify-center p-6 hover-lift border-blue-200/80 cursor-pointer transition-all hover:ring-2 hover:ring-blue-500/30"
+      >
+        <div className="flex items-center gap-2 mb-2 text-blue-600">
+          <DollarSign className="h-5 w-5" />
+          <span className="font-bold text-sm uppercase tracking-wider">Cash Balance</span>
+        </div>
+        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">${cashOnHand.toLocaleString(undefined, {minimumFractionDigits: 2})}</h1>
+        <p className="text-xs font-semibold text-slate-500 mt-2">Local Vault Account</p>
+      </motion.div>
+
+      {/* ROW 2: Primary Analytics & Overdue Payers */}
+      {/* 3. Performance Summary Chart (Span 8 on lg+, 12 on sm/md) */}
+      <motion.div 
+        variants={itemVars} 
+        onClick={() => onNavigate?.("analytics")}
+        title="Click to view Financial Reports & Analytics"
+        className="col-span-12 lg:col-span-8 glass-widget flex flex-col p-6 hover-lift cursor-pointer transition-all hover:ring-2 hover:ring-blue-500/30"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-xl font-semibold text-slate-900">Performance Summary</h2>
+          <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full flex items-center gap-1">
+            Reports <ArrowUpRight className="h-3.5 w-3.5" />
+          </span>
+        </div>
         <div className="flex items-center gap-4 mb-4">
-          <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-secondary"></div><span className="text-sm">Today's Sales</span></div>
-          <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-[#c5c7c8]"></div><span className="text-sm">Today's Purchases</span></div>
+          <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-blue-600"></div><span className="text-sm text-slate-700 font-medium">Today's Sales</span></div>
+          <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-slate-400"></div><span className="text-sm text-slate-700 font-medium">Today's Purchases</span></div>
         </div>
         
         {/* Abstract Chart */}
-        <div className="flex-1 rounded-xl bg-white/20 border border-white/30 relative flex items-end p-4 mb-4 min-h-[160px]">
-          <svg className="w-full h-full absolute inset-0 text-secondary opacity-60 drop-shadow-md" preserveAspectRatio="none" viewBox="0 0 100 40">
-            <path d="M0 30 Q 20 10, 40 25 T 80 15 T 100 5 L 100 40 L 0 40 Z" fill="url(#chart-gradient)" opacity="0.2"></path>
-            <path d="M0 30 Q 20 10, 40 25 T 80 15 T 100 5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2"></path>
-            <path d="M0 35 Q 20 20, 40 30 T 80 25 T 100 20" fill="none" stroke="#c5c7c8" strokeLinecap="round" strokeWidth="1.5"></path>
+        <div className="flex-1 rounded-xl bg-blue-50/50 border border-blue-100 relative flex items-end p-4 mb-4 min-h-[160px]">
+          <svg className="w-full h-full absolute inset-0 text-blue-600 opacity-70 drop-shadow-md" preserveAspectRatio="none" viewBox="0 0 100 40">
+            <path d="M0 30 Q 20 10, 40 25 T 80 15 T 100 5 L 100 40 L 0 40 Z" fill="url(#chart-gradient)" opacity="0.25"></path>
+            <path d="M0 30 Q 20 10, 40 25 T 80 15 T 100 5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2.5"></path>
+            <path d="M0 35 Q 20 20, 40 30 T 80 25 T 100 20" fill="none" stroke="#94a3b8" strokeLinecap="round" strokeWidth="1.5"></path>
             <defs>
               <linearGradient id="chart-gradient" x1="0" x2="0" y1="0" y2="1">
                 <stop offset="0%" stopColor="currentColor"></stop>
@@ -56,159 +127,163 @@ export function DashboardScreen() {
         </div>
         
         <div className="flex justify-between items-end mt-auto">
-          <span className="text-xs text-on-surface-variant font-medium uppercase tracking-wider">Last 7 days</span>
+          <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Last 7 days</span>
           <div className="text-right">
-            <div className="flex items-center justify-end gap-1 text-secondary font-bold text-xl">
+            <div className="flex items-center justify-end gap-1 text-blue-600 font-bold text-xl">
               +15% <ArrowUpRight className="h-5 w-5" />
             </div>
-            <span className="text-xs text-on-surface-variant font-medium">Sales from yesterday</span>
+            <span className="text-xs text-slate-500 font-medium">Sales from yesterday</span>
           </div>
         </div>
       </motion.div>
 
-      {/* 2. Welcome Back (Span 4, Row 1) */}
-      <motion.div variants={itemVars} className="col-span-12 xl:col-span-4 row-span-1 glass-widget flex flex-col p-6 hover-lift relative overflow-hidden">
-        {/* Decorative Blob */}
-        <div className="absolute -top-6 -right-6 w-24 h-24 bg-white/40 backdrop-blur-2xl rounded-full shadow-[inset_0_-2px_10px_rgba(0,0,0,0.1),0_10px_30px_rgba(0,0,0,0.05)] border border-white/60 pointer-events-none"></div>
-
-        <div className="flex items-center gap-4 mb-6 z-10">
-          <div className="w-12 h-12 rounded-full bg-[#c5c7c8]/30 flex items-center justify-center">
-             <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center border border-white/50">
-               <DollarSign className="text-primary h-5 w-5" />
-             </div>
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold text-on-surface leading-tight">Welcome Back,</h2>
-            <p className="text-on-surface-variant text-sm font-medium">User (Admin)</p>
-          </div>
+      {/* 4. Top 5 Overdue Payers (Span 4 on lg+, 12 on sm/md) */}
+      <motion.div 
+        variants={itemVars} 
+        onClick={() => onNavigate?.("ledger")}
+        title="Click to view Credit Limits & Overdue Payers"
+        className="col-span-12 lg:col-span-4 glass-widget flex flex-col p-6 hover-lift bg-gradient-to-br from-amber-50/60 to-rose-50/60 border-rose-200/60 cursor-pointer transition-all hover:ring-2 hover:ring-rose-500/30"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-slate-900">Overdue Payers</h2>
+          <span className="text-xs font-bold text-rose-600 bg-rose-100 px-2 py-0.5 rounded-md">Ledger</span>
         </div>
-
-        <div className="space-y-3 mt-2 flex-1 flex flex-col justify-end z-10">
-          <div className="flex justify-between text-sm">
-            <span className="text-on-surface-variant">Cash In Hand:</span>
-            <span className="font-semibold text-on-surface">${cashOnHand.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-on-surface-variant">Today's Sales:</span>
-            <span className="font-semibold text-on-surface">${sales.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-on-surface-variant">Pending Reminders:</span>
-            <span className="font-semibold text-on-surface">5</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-on-surface-variant">Low Stock Alerts:</span>
-            <span className="font-semibold text-error">10 items</span>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* 3. Top 5 Overdue Payers (Span 3, Row 1) */}
-      <motion.div variants={itemVars} className="col-span-12 xl:col-span-3 row-span-1 glass-widget flex flex-col p-6 hover-lift bg-gradient-to-br from-tertiary-container/50 to-error-container/20 border-error/10">
-        <h2 className="text-xl font-semibold text-on-surface mb-4">Top 5 Overdue Payers</h2>
         <div className="space-y-3">
-          <div className="flex justify-between text-sm border-b border-error/10 pb-2">
-            <span className="text-error font-medium">ABC Co.</span>
-            <span className="text-error/70">25 days</span>
+          <div className="flex justify-between text-sm border-b border-rose-100 pb-2">
+            <span className="text-rose-700 font-bold">ABC Co.</span>
+            <span className="text-rose-600/80 font-medium">25 days</span>
           </div>
-          <div className="flex justify-between text-sm border-b border-error/10 pb-2">
-            <span className="text-on-surface-variant font-medium">J. Smith</span>
-            <span className="text-on-surface-variant/70">18 days</span>
+          <div className="flex justify-between text-sm border-b border-rose-100 pb-2">
+            <span className="text-slate-700 font-medium">J. Smith</span>
+            <span className="text-slate-500">18 days</span>
           </div>
-          <div className="flex justify-between text-sm border-b border-error/10 pb-2">
-            <span className="text-on-surface-variant font-medium">Acme Corp</span>
-            <span className="text-on-surface-variant/70">12 days</span>
+          <div className="flex justify-between text-sm border-b border-rose-100 pb-2">
+            <span className="text-slate-700 font-medium">Acme Corp</span>
+            <span className="text-slate-500">12 days</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-on-surface-variant font-medium">D. Wayne</span>
-            <span className="text-on-surface-variant/70">5 days</span>
+            <span className="text-slate-700 font-medium">D. Wayne</span>
+            <span className="text-slate-500">5 days</span>
           </div>
         </div>
       </motion.div>
 
-      {/* 4. Low Stock Items (Span 5, Row 3) */}
-      <motion.div variants={itemVars} className="col-span-12 xl:col-span-5 row-span-1 glass-widget flex flex-col p-6 hover-lift">
-        <h2 className="text-xl font-semibold text-on-surface mb-4 flex items-center gap-2">
-          <Package className="h-5 w-5 text-secondary" />
-          Low Stock Items
-        </h2>
+      {/* ROW 3: Operational Monitoring (3 Equal 4-Column Cards) */}
+      {/* 5. Low Stock Items (Span 4 on lg+, 6 on md, 12 on sm) */}
+      <motion.div 
+        variants={itemVars} 
+        onClick={() => onNavigate?.("inventory")}
+        title="Click to view Inventory Management"
+        className="col-span-12 md:col-span-6 lg:col-span-4 glass-widget flex flex-col p-6 hover-lift cursor-pointer transition-all hover:ring-2 hover:ring-blue-500/30"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <Package className="h-5 w-5 text-blue-600" />
+            Low Stock Items
+          </h2>
+          <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Stock</span>
+        </div>
         <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <div className="w-2 h-2 rounded-full bg-secondary"></div>
-            <span className="text-sm font-medium text-on-surface">Item A <span className="text-secondary">(Qty 3)</span></span>
+          <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-2.5 h-2.5 rounded-full bg-rose-500"></div>
+              <span className="text-sm font-semibold text-slate-800">Item A</span>
+            </div>
+            <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md">Qty 3</span>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="w-2 h-2 rounded-full bg-secondary"></div>
-            <span className="text-sm font-medium text-on-surface">Item B <span className="text-secondary">(Qty 1)</span></span>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* 5. Reminder & Promise Log (Span 4, Row 2-3) */}
-      <motion.div variants={itemVars} className="col-span-12 xl:col-span-4 row-span-2 glass-widget flex flex-col p-6 hover-lift">
-        <h2 className="text-xl font-semibold text-on-surface mb-4">Reminder & Promise Log</h2>
-        <div className="space-y-3 flex-1 overflow-y-auto pr-2">
-          <div className="flex items-start gap-3 p-3 rounded-xl bg-white/40 border border-white/60 shadow-sm">
-             <CheckSquare className="h-5 w-5 text-secondary mt-0.5 shrink-0" />
-             <span className="text-sm font-medium text-on-surface">Verify TID #987 from Bank Deposit</span>
-          </div>
-          <div className="flex items-start gap-3 p-3 rounded-xl hover:bg-white/20 transition-colors border border-transparent">
-             <div className="h-5 w-5 rounded border-2 border-on-surface-variant/30 mt-0.5 shrink-0"></div>
-             <span className="text-sm text-on-surface-variant">Call Customer Doe re: Dues (30 Days Past)</span>
-          </div>
-          <div className="flex flex-col gap-2 p-3 rounded-xl hover:bg-white/20 transition-colors border border-transparent">
-             <div className="flex items-start gap-3">
-               <div className="h-5 w-5 rounded border-2 border-on-surface-variant/30 mt-0.5 shrink-0"></div>
-               <span className="text-sm text-on-surface-variant">Record Verbal Payment Promise (Smith, $500)</span>
-             </div>
+          <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-2.5 h-2.5 rounded-full bg-rose-500"></div>
+              <span className="text-sm font-semibold text-slate-800">Item B</span>
+            </div>
+            <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md">Qty 1</span>
           </div>
         </div>
       </motion.div>
 
-      {/* 6. Recent Cash Transactions (Span 3, Row 2) */}
-      <motion.div variants={itemVars} className="col-span-12 xl:col-span-3 row-span-1 glass-widget flex flex-col p-6 hover-lift">
-        <h2 className="text-xl font-semibold text-on-surface mb-4">Recent Cash Transactions</h2>
+      {/* 6. Recent Cash Transactions (Span 4 on lg+, 6 on md, 12 on sm) */}
+      <motion.div 
+        variants={itemVars} 
+        onClick={() => onNavigate?.("invoices")}
+        title="Click to view Sales & Transactions"
+        className="col-span-12 md:col-span-6 lg:col-span-4 glass-widget flex flex-col p-6 hover-lift cursor-pointer transition-all hover:ring-2 hover:ring-blue-500/30"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-slate-900">Recent Cash</h2>
+          <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Sales</span>
+        </div>
         <div className="space-y-4">
-          <div>
-            <p className="text-sm font-medium text-on-surface">Sale Invoice #123</p>
-            <p className="text-sm text-secondary font-semibold">(+$500.00)</p>
+          <div className="flex justify-between items-center p-2 rounded-lg bg-emerald-50/60 border border-emerald-100">
+            <div>
+              <p className="text-sm font-bold text-slate-800">Sale Invoice #123</p>
+              <p className="text-xs text-slate-500 font-medium">Cash Sale</p>
+            </div>
+            <p className="text-sm text-emerald-700 font-bold">(+$500.00)</p>
           </div>
-          <div>
-            <p className="text-sm font-medium text-on-surface">Expense Entry #9</p>
-            <p className="text-sm text-error font-semibold">(-$150.00)</p>
+          <div className="flex justify-between items-center p-2 rounded-lg bg-rose-50/60 border border-rose-100">
+            <div>
+              <p className="text-sm font-bold text-slate-800">Expense Entry #9</p>
+              <p className="text-xs text-slate-500 font-medium">Store Supplies</p>
+            </div>
+            <p className="text-sm text-rose-700 font-bold">(-$150.00)</p>
           </div>
         </div>
       </motion.div>
 
-      {/* 7. Cash Balance (Span 3, Row 3) */}
-      <motion.div variants={itemVars} className="col-span-12 xl:col-span-3 row-span-1 glass-widget flex flex-col items-center justify-center p-6 hover-lift border-secondary/20">
-        <div className="flex items-center gap-2 mb-2 text-secondary">
-          <DollarSign className="h-5 w-5" />
-          <span className="font-medium text-sm">Cash Balance</span>
+      {/* 7. Reminder & Promise Log (Span 4 on lg+, 12 on md/sm) */}
+      <motion.div 
+        variants={itemVars} 
+        onClick={() => onNavigate?.("reminders")}
+        title="Click to view Reminders & Log"
+        className="col-span-12 md:col-span-12 lg:col-span-4 glass-widget flex flex-col p-6 hover-lift cursor-pointer transition-all hover:ring-2 hover:ring-blue-500/30"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-slate-900">Reminder Log</h2>
+          <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">View All</span>
         </div>
-        <h1 className="text-4xl font-bold tracking-tight text-on-surface">${cashOnHand.toLocaleString(undefined, {minimumFractionDigits: 2})}</h1>
-        <p className="text-xs text-on-surface-variant mt-2">Local Vault Account</p>
+        <div className="space-y-2 flex-1 overflow-y-auto pr-1">
+          <div className="flex items-start gap-2.5 p-2 rounded-lg bg-blue-50/70 border border-blue-100">
+             <CheckSquare className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+             <span className="text-xs font-semibold text-slate-800">Verify TID #987 from Bank Deposit</span>
+          </div>
+          <div className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-50 border border-slate-100">
+             <div className="h-4 w-4 rounded border-2 border-slate-400 mt-0.5 shrink-0"></div>
+             <span className="text-xs text-slate-700 font-medium">Call Customer Doe re: Dues (30 Days Past)</span>
+          </div>
+        </div>
       </motion.div>
 
-      {/* 8. Quick Entry Bar (Span 12, Row 4) */}
-      <motion.div variants={itemVars} className="col-span-12 row-span-1 glass-widget flex items-center justify-between p-4 px-8 hover-lift mt-2">
-        <span className="font-semibold text-on-surface">Quick Entry Bar</span>
-        <div className="flex gap-8">
-          <button className="flex flex-col items-center gap-1 text-secondary hover:text-secondary-container transition-colors group">
+      {/* ROW 4: Quick Entry Bar (Span 12 Full Width) */}
+      <motion.div variants={itemVars} className="col-span-12 glass-widget flex flex-wrap items-center justify-between p-4 px-8 hover-lift gap-4">
+        <span className="font-bold text-slate-900 text-base">Quick Entry Bar</span>
+        <div className="flex flex-wrap gap-6 sm:gap-8">
+          <button 
+            onClick={() => onNavigate?.("invoices")}
+            className="flex flex-col items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors group cursor-pointer"
+          >
             <Receipt className="h-5 w-5 group-hover:-translate-y-1 transition-transform" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider">[New Sale Invoice]</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">[New Sale Invoice]</span>
           </button>
-          <button className="flex flex-col items-center gap-1 text-primary hover:text-primary-container transition-colors group">
+          <button 
+            onClick={() => onNavigate?.("payments")}
+            className="flex flex-col items-center gap-1 text-indigo-600 hover:text-indigo-800 transition-colors group cursor-pointer"
+          >
             <ShoppingBag className="h-5 w-5 group-hover:-translate-y-1 transition-transform" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider">[New Purchase Invoice]</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">[New Purchase Invoice]</span>
           </button>
-          <button className="flex flex-col items-center gap-1 text-secondary hover:text-secondary-container transition-colors group">
+          <button 
+            onClick={() => onNavigate?.("payments")}
+            className="flex flex-col items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors group cursor-pointer"
+          >
             <CreditCard className="h-5 w-5 group-hover:-translate-y-1 transition-transform" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider">[Record Payment]</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">[Record Payment]</span>
           </button>
-          <button className="flex flex-col items-center gap-1 text-primary hover:text-primary-container transition-colors group">
+          <button 
+            onClick={() => onNavigate?.("inventory")}
+            className="flex flex-col items-center gap-1 text-indigo-600 hover:text-indigo-800 transition-colors group cursor-pointer"
+          >
             <Package className="h-5 w-5 group-hover:-translate-y-1 transition-transform" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider">[Check Inventory]</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">[Check Inventory]</span>
           </button>
         </div>
       </motion.div>

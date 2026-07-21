@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "./ui/EmptyState";
-import { Receipt } from "lucide-react";
+import { Receipt, ShoppingBag, Plus } from "lucide-react";
 
 interface Account {
   id: number;
@@ -23,6 +23,19 @@ interface Payment {
   document_date: string;
   bank_cash_name: string;
 }
+
+const containerVars = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.05 }
+  }
+} as any;
+
+const itemVars = {
+  hidden: { opacity: 0, y: 15 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } }
+} as any;
 
 export function PaymentScreen() {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -43,7 +56,6 @@ export function PaymentScreen() {
       setPayments(pay || []);
     } catch (err) {
       console.error(err);
-      // Fallback for UI testing
       setAccounts([{id: 1, name: "Test Account", account_type: "customer"}]);
     }
   };
@@ -70,13 +82,11 @@ export function PaymentScreen() {
 
       await invoke("create_payment", { payload });
       
-      // Reset form
       setAmount("");
       setTid("");
       setBankCashName("");
       loadData();
     } catch (err) {
-      // This will catch the Duplicate TID Protection error from Rust
       alert(err);
     }
   };
@@ -86,22 +96,36 @@ export function PaymentScreen() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h2 className="text-3xl font-bold tracking-tight text-primary">Payments & Receipts</h2>
-        <p className="text-muted-foreground">Log incoming receipts and outgoing payments with strict duplicate TID protection.</p>
-      </div>
+    <motion.div 
+      variants={containerVars}
+      initial="hidden"
+      animate="show"
+      className="grid grid-cols-12 gap-6 h-full auto-rows-max"
+    >
+      {/* HEADER BAR */}
+      <motion.div variants={itemVars} className="col-span-12 glass-widget p-6 hover-lift flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center shadow-xs">
+            <ShoppingBag className="text-blue-600 h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-extrabold text-slate-900 leading-tight">
+              Payments & Receipts
+            </h1>
+            <p className="text-slate-500 text-sm font-medium">Log incoming receipts and outgoing payments with strict duplicate TID protection</p>
+          </div>
+        </div>
+      </motion.div>
 
-      <div className="grid md:grid-cols-3 gap-6">
-        <Card className="md:col-span-1 h-fit hover-lift">
-          <CardHeader>
-            <CardTitle>Log Transaction</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Transaction Type</label>
+      {/* FORM WIDGET */}
+      <motion.div variants={itemVars} className="col-span-12 lg:col-span-4 glass-widget p-6 hover-lift flex flex-col justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-200 pb-3 mb-4">Log Transaction</h2>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Transaction Type</label>
               <Select value={paymentType} onValueChange={setPaymentType}>
-                <SelectTrigger>
+                <SelectTrigger className="bg-white/80 border-slate-200 focus:ring-blue-500 text-slate-900 font-semibold">
                   <SelectValue placeholder="Select Type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -111,10 +135,10 @@ export function PaymentScreen() {
               </Select>
             </div>
             
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Contact / Account</label>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Contact / Account</label>
               <Select value={accountId} onValueChange={setAccountId}>
-                <SelectTrigger>
+                <SelectTrigger className="bg-white/80 border-slate-200 focus:ring-blue-500 text-slate-900 font-semibold">
                   <SelectValue placeholder="Select Account" />
                 </SelectTrigger>
                 <SelectContent>
@@ -126,75 +150,81 @@ export function PaymentScreen() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Amount</label>
-                <Input type="number" value={amount} onChange={(e) => setAmount(parseFloat(e.target.value) || "")} />
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Amount ($)</label>
+                <Input type="number" value={amount} onChange={(e) => setAmount(parseFloat(e.target.value) || "")} className="bg-white/80 border-slate-200 text-slate-900 font-semibold" />
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Date</label>
-                <Input type="date" value={documentDate} onChange={(e) => setDocumentDate(e.target.value)} />
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Date</label>
+                <Input type="date" value={documentDate} onChange={(e) => setDocumentDate(e.target.value)} className="bg-white/80 border-slate-200 text-slate-900 font-semibold" />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-destructive">Transaction ID (TID)</label>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-rose-600">Transaction ID (TID / Ref)</label>
               <Input 
                 value={tid} 
                 onChange={(e) => setTid(e.target.value)} 
                 placeholder="Unique Ref No. / Cheque No." 
-                className="border-destructive focus-visible:ring-destructive"
+                className="bg-white/80 border-rose-200 focus:ring-rose-500 text-slate-900 font-semibold"
               />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Bank / Cash Name</label>
-              <Input value={bankCashName} onChange={(e) => setBankCashName(e.target.value)} placeholder="e.g. HBL Main Branch" />
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Bank / Cash Account</label>
+              <Input value={bankCashName} onChange={(e) => setBankCashName(e.target.value)} placeholder="e.g. HBL Main Vault" className="bg-white/80 border-slate-200 text-slate-900 font-semibold" />
             </div>
+          </div>
+        </div>
 
-            <Button className="w-full" onClick={handleLogPayment}>Save Payment</Button>
-          </CardContent>
-        </Card>
+        <div className="pt-6">
+          <Button onClick={handleLogPayment} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md shadow-blue-600/20 transition-all cursor-pointer">
+            <Plus className="h-4 w-4 mr-2" /> Save Payment
+          </Button>
+        </div>
+      </motion.div>
 
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle>Recent Transactions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {payments.length === 0 ? (
-              <EmptyState icon={Receipt} title="No Payments Logged" description="You have not recorded any payments or receipts yet." />
-            ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader className="bg-muted/50">
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>TID Ref</TableHead>
-                      <TableHead>Account</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Bank/Cash</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {payments.map((pay, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell>{pay.document_date.split('T')[0]}</TableCell>
-                        <TableCell className="font-mono text-xs">{pay.tid}</TableCell>
-                        <TableCell className="font-medium">{getAccountName(pay.account_id)}</TableCell>
-                        <TableCell className="capitalize">{pay.payment_type}</TableCell>
-                        <TableCell>{pay.bank_cash_name}</TableCell>
-                        <TableCell className={`text-right font-medium ${pay.payment_type === 'receipt' ? 'text-emerald-600' : 'text-destructive'}`}>
-                          {pay.amount.toFixed(2)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+      {/* TABLE WIDGET */}
+      <motion.div variants={itemVars} className="col-span-12 lg:col-span-8 glass-widget p-6 hover-lift flex flex-col">
+        <h2 className="text-lg font-bold text-slate-900 border-b border-slate-200 pb-3 mb-4">Recent Transactions</h2>
+        {payments.length === 0 ? (
+          <EmptyState icon={Receipt} title="No Payments Logged" description="You have not recorded any payments or receipts yet." />
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white/50">
+            <Table>
+              <TableHeader className="bg-slate-100/80">
+                <TableRow className="border-slate-200">
+                  <TableHead className="text-xs font-bold uppercase text-slate-700">Date</TableHead>
+                  <TableHead className="text-xs font-bold uppercase text-slate-700">TID Ref</TableHead>
+                  <TableHead className="text-xs font-bold uppercase text-slate-700">Account</TableHead>
+                  <TableHead className="text-xs font-bold uppercase text-slate-700">Type</TableHead>
+                  <TableHead className="text-xs font-bold uppercase text-slate-700">Bank/Cash</TableHead>
+                  <TableHead className="text-right text-xs font-bold uppercase text-slate-700">Amount</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {payments.map((pay, idx) => (
+                  <TableRow key={idx} className="border-slate-100 hover:bg-blue-50/30">
+                    <TableCell className="font-semibold text-slate-800">{pay.document_date.split('T')[0]}</TableCell>
+                    <TableCell className="font-mono text-xs font-bold text-slate-600">{pay.tid}</TableCell>
+                    <TableCell className="font-bold text-slate-900">{getAccountName(pay.account_id)}</TableCell>
+                    <TableCell>
+                      <span className={`text-xs font-extrabold px-2.5 py-1 rounded-full uppercase ${pay.payment_type === 'receipt' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+                        {pay.payment_type}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-slate-600 font-medium">{pay.bank_cash_name}</TableCell>
+                    <TableCell className={`text-right font-extrabold text-base ${pay.payment_type === 'receipt' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {pay.payment_type === 'receipt' ? '+' : '-'}${pay.amount.toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
   );
 }
+
