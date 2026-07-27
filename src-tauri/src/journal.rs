@@ -390,6 +390,7 @@ mod tests {
                 total: 150.00,
             }],
             user_id: Some(1),
+            settlement_account_code: None,
         };
 
         create_invoice_inner(&mut conn, payload).expect("create_invoice_inner failed");
@@ -420,39 +421,31 @@ mod tests {
         assert_eq!(val, 90000, "total_value_paisa should be 90000");
     }
 
-    // Test 2: Cash sale rounding — 1-paisa difference should go to 9000
-    // EXPECTED FAILURE: create_invoice always posts to AR (1100), not cash (1000),
-    // and has no rounding-difference path to 9000.
+    // Test 2: Cash sale with rounding — total not a whole rupee routes difference to 9000
     #[test]
     fn t2_cash_sale_rounding_to_9000() {
-        // Scenario: 3 units with WAC = 333.33... paisa (total_value=1000, qty=3)
-        // COGS = ROUND(1000/3) * 3 = 333 * 3 = 999  (1 paisa stranded in inventory)
-        // Invoice total entered as ₹30.00 (3 units × ₹10.00)
-        // A cash sale should post Dr 1000 Cash / Cr 4000 Revenue, not Dr 1100 AR
-        // The 1-paisa COGS/inventory mismatch should create a Dr/Cr 9000 entry
+        // Scenario: 3 units @ cost ₹10.00 each, sell all 3 at ₹29.99 cash
+        // Invoice total = 2999 paisa; rounded to nearest rupee = 3000 paisa
+        // Journal: Dr 1000 (3000) / Cr 4000 (2999) / Cr 9000 (1)  [+COGS lines]
+        // WAC is exact: ROUND(3000 * 3 / 3) = 3000 → no inventory residue
         let mut conn = open_test_db();
         let cust_id = seed_customer(&conn);
-        // Seed 3 units with total_value_paisa=1000 (not divisible by 3)
-        conn.execute(
-            "INSERT INTO inventory (name, qty_on_hand, total_value_paisa, cost_price, sale_price)
-             VALUES ('Odd Item', 3, 1000, 334, 1000)",
-            [],
-        ).unwrap();
-        let inv_id = conn.last_insert_rowid();
+        let inv_id = seed_inventory(&conn, 3, 1000); // 3 units @ ₹10.00 each
 
         use crate::invoices::{create_invoice_inner, InvoiceData, InvoiceItemData};
         let payload = InvoiceData {
             invoice_type: "sale".into(),
             account_id: cust_id,
             date: "2026-01-15".into(),
-            total: 30.00,
+            total: 29.99,   // 2999 paisa → rounds to 3000
             discount: 0.0,
             items: vec![InvoiceItemData {
-                inventory_id: inv_id, quantity: 3.0, rate: 10.00, discount: 0.0, total: 30.00,
+                inventory_id: inv_id, quantity: 3.0, rate: 9.997, discount: 0.0, total: 29.99,
             }],
             user_id: Some(1),
+            settlement_account_code: Some("1000".into()), // cash sale
         };
-        create_invoice_inner(&mut conn, payload).expect("sale should succeed");
+        create_invoice_inner(&mut conn, payload).expect("cash sale should succeed");
         let je_id = last_je_id(&conn);
         let lines = ledger_lines(&conn, je_id);
 
@@ -461,17 +454,28 @@ mod tests {
             println!("  {} party={:?} Dr={} Cr={}", code, party, dr, cr);
         }
 
-        // EXPECTED FAILURE: should post to 1000 (Cash), not 1100 (AR)
-        let has_cash_leg = lines.iter().any(|(c,_,dr,_)| c=="1000" && *dr==3000);
-        assert!(has_cash_leg,
-            "FAIL: Cash sale should Dr 1000 Cash 3000, but currently posts Dr 1100 AR. \
-             Cash sale path not implemented — always goes through AR.");
+        // Cash leg: Dr 1000 → 3000 (rounded)
+        assert!(lines.iter().any(|(c,_,dr,cr)| c=="1000" && *dr==3000 && *cr==0),
+            "Cash sale must Dr 1000 Cash at rounded amount 3000");
+        // Revenue: Cr 4000 → 2999 (exact)
+        assert!(lines.iter().any(|(c,_,dr,cr)| c=="4000" && *dr==0 && *cr==2999),
+            "Revenue must Cr 4000 at exact amount 2999");
+        // Rounding: Cr 9000 → 1 (round-up income)
+        assert!(lines.iter().any(|(c,_,dr,cr)| c=="9000" && *dr==0 && *cr==1),
+            "1-paisa round-up must Cr 9000 Rounding Difference 1");
+        // No AR: cash sale must NOT touch 1100
+        assert!(!lines.iter().any(|(c,_,_,_)| c=="1100"),
+            "Cash sale must not post to 1100 AR");
+        // COGS: Dr 5000 → 3000 (ROUND(3000*3/3)=3000), Cr 1200 → 3000
+        assert!(lines.iter().any(|(c,_,dr,cr)| c=="5000" && *dr==3000 && *cr==0),
+            "COGS must Dr 5000 3000");
+        assert!(lines.iter().any(|(c,_,dr,cr)| c=="1200" && *dr==0 && *cr==3000),
+            "Inventory must Cr 1200 3000");
 
-        // EXPECTED FAILURE: 1 paisa rounding difference should go to 9000
-        // WAC=333, COGS=999, but inventory had 1000 — 1 paisa difference
-        let has_rounding = lines.iter().any(|(c,_,_,_)| c=="9000");
-        assert!(has_rounding,
-            "FAIL: 1-paisa WAC rounding difference (1000 - 999) should post to 9000, but no 9000 entry exists.");
+        // Inventory fully depleted
+        let (qty, val) = inventory_row(&conn, inv_id);
+        assert_eq!(qty, 0, "qty_on_hand should be 0 after selling all 3 units");
+        assert_eq!(val, 0, "total_value_paisa should be 0 — no WAC residue");
     }
 
     // Test 3: Purchase invoice increases WAC correctly
@@ -497,6 +501,7 @@ mod tests {
                 inventory_id: inv_id, quantity: 100.0, rate: 10.00, discount: 0.0, total: 1000.00,
             }],
             user_id: Some(1),
+            settlement_account_code: None,
         };
         create_invoice_inner(&mut conn, payload).expect("purchase should succeed");
 
@@ -535,6 +540,7 @@ mod tests {
                 date: "2026-01-01".into(), total, discount: 0.0,
                 items: vec![InvoiceItemData { inventory_id: inv_id, quantity: qty, rate, discount: 0.0, total }],
                 user_id: Some(1),
+                settlement_account_code: None,
             };
             create_invoice_inner(conn, p).unwrap();
         };
@@ -555,6 +561,7 @@ mod tests {
             date: "2026-01-05".into(), total: 200.00, discount: 0.0,
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 20.00, discount: 0.0, total: 200.00 }],
             user_id: Some(1),
+            settlement_account_code: None,
         };
         create_invoice_inner(&mut conn, sale).expect("sale should succeed");
 
@@ -563,14 +570,15 @@ mod tests {
             "SELECT cost_at_sale FROM invoice_items WHERE inventory_id=?1 ORDER BY id DESC LIMIT 1",
             params![inv_id], |r| r.get(0)
         ).unwrap();
-        println!("T4 cost_at_sale={:?} (expected 1133)", cost_at_sale);
-        assert_eq!(cost_at_sale, Some(1133), "cost_at_sale should be WAC = ROUND(170000/150) = 1133");
+        println!("T4 cost_at_sale={:?} (expected 11333)", cost_at_sale);
+        assert_eq!(cost_at_sale, Some(11333),
+            "cost_at_sale is total COGS for the line = ROUND(170000 * 10 / 150) = 11333");
 
-        // COGS in ledger = 1133 × 10 = 11330
+        // COGS in ledger = ROUND(170000 * 10 / 150) = 11333
         let je_id = last_je_id(&conn);
         let lines = ledger_lines(&conn, je_id);
-        assert!(lines.iter().any(|(c,_,dr,cr)| c=="5000" && *dr==11330 && *cr==0),
-            "COGS should be 11330 (1133 × 10)");
+        assert!(lines.iter().any(|(c,_,dr,cr)| c=="5000" && *dr==11333 && *cr==0),
+            "COGS should be 11333 (ROUND(170000 * 10 / 150))");
 
         // Now purchase 3: 100 @ ₹8.00 — this should NOT change cost_at_sale of the earlier sale
         make_purchase(&mut conn, sup_id, 100.0, 8.00, 800.00);
@@ -587,8 +595,8 @@ mod tests {
              WHERE ii.inventory_id=?1 AND i.type='sale' ORDER BY ii.id DESC LIMIT 1",
             params![inv_id], |r| r.get(0)
         ).unwrap();
-        println!("T4 cost_at_sale after later purchase={:?} (must still be 1133)", sale_cost_at_sale);
-        assert_eq!(sale_cost_at_sale, Some(1133),
+        println!("T4 cost_at_sale after later purchase={:?} (must still be 11333)", sale_cost_at_sale);
+        assert_eq!(sale_cost_at_sale, Some(11333),
             "cost_at_sale must be immutable — later purchase must not change it");
         let _ = cost_at_sale_after;
     }
@@ -608,6 +616,7 @@ mod tests {
             date: "2026-01-15".into(), total: 150.00, discount: 0.0,
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 15.00, discount: 0.0, total: 150.00 }],
             user_id: Some(1),
+            settlement_account_code: None,
         };
         create_invoice_inner(&mut conn, sale).expect("sale should succeed");
 
@@ -617,6 +626,7 @@ mod tests {
             date: "2026-01-16".into(), total: 75.00, discount: 0.0,
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 5.0, rate: 15.00, discount: 0.0, total: 75.00 }],
             user_id: Some(1),
+            settlement_account_code: None,
         };
         create_invoice_inner(&mut conn, ret).expect("sale_return should succeed");
 
@@ -639,17 +649,88 @@ mod tests {
             "FAIL: Missing Cr 5000 COGS 5000 — sale_return must reverse COGS");
     }
 
-    // Test 6: Void invoice — not yet implemented
+    // Test 6: Void invoice — reversal zeroes all posted balances and restores inventory
     #[test]
     fn t6_void_invoice_reverses_all_entries() {
-        // Void is not implemented. This test documents what's needed:
-        // 1. `void_invoice(invoice_id, voided_by, void_reason)` command
-        // 2. Sets invoices.voided_at, voided_by, void_reason
-        // 3. Posts a reversing journal entry (reverses_journal_entry_id set to original JE)
-        // 4. Net of original + reversing in posted_ledger_entries = 0 for all accounts
-        // 5. Original rows unchanged (immutability confirmed by reading ledger_entries)
-        panic!("EXPECTED FAILURE: void_invoice is not implemented. \
-                Implement void_invoice() in invoices.rs, register in lib.rs, then update this test.");
+        let mut conn = open_test_db();
+        let cust_id = seed_customer(&conn);
+        let inv_id = seed_inventory(&conn, 100, 1000); // 100 units @ ₹10.00 each
+
+        use crate::invoices::{create_invoice_inner, void_invoice_inner, InvoiceData, InvoiceItemData};
+
+        // Sell 10 units @ ₹15.00; COGS = ROUND(100000*10/100) = 10000
+        create_invoice_inner(&mut conn, InvoiceData {
+            invoice_type: "sale".into(), account_id: cust_id,
+            date: "2026-01-15".into(), total: 150.00, discount: 0.0,
+            items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 15.00, discount: 0.0, total: 150.00 }],
+            user_id: Some(1),
+            settlement_account_code: None,
+        }).unwrap();
+
+        let invoice_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
+        let orig_je_id = last_je_id(&conn);
+
+        // Inventory: 90 units, val=90000 after the sale
+        let (q, v) = inventory_row(&conn, inv_id);
+        assert_eq!(q, 90);
+        assert_eq!(v, 90000);
+
+        // Void the invoice
+        void_invoice_inner(&mut conn, invoice_id, 1, "Test void".into()).unwrap();
+
+        // 1. voided_at is set
+        let voided_at: Option<String> = conn.query_row(
+            "SELECT voided_at FROM invoices WHERE id = ?1", params![invoice_id], |r| r.get(0)
+        ).unwrap();
+        assert!(voided_at.is_some(), "voided_at must be set after void");
+
+        // 2. Two journal entries for this invoice (original 'invoice' + reversal 'void')
+        let je_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM journal_entries WHERE reference_id = ?1",
+            params![invoice_id], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(je_count, 2, "Should have 2 JEs: original + reversal");
+
+        // 3. Reversal JE references original
+        let rev_je_id = last_je_id(&conn);
+        let reverses: Option<i64> = conn.query_row(
+            "SELECT reverses_journal_entry_id FROM journal_entries WHERE id = ?1",
+            params![rev_je_id], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(reverses, Some(orig_je_id), "Reversal JE must point to original JE");
+
+        // 4. Net posted balances = 0 for all accounts touched
+        let net_ar: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(debit)-SUM(credit),0) FROM posted_ledger_entries
+             WHERE account_code='1100' AND party_id=?1", params![cust_id], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(net_ar, 0, "Net AR must be 0 after void");
+
+        let net_rev: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(debit)-SUM(credit),0) FROM posted_ledger_entries WHERE account_code='4000'",
+            [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(net_rev, 0, "Net revenue must be 0 after void");
+
+        let net_cogs: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(debit)-SUM(credit),0) FROM posted_ledger_entries WHERE account_code='5000'",
+            [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(net_cogs, 0, "Net COGS must be 0 after void");
+
+        // 5. Original ledger lines are immutable and correct
+        let orig_lines = ledger_lines(&conn, orig_je_id);
+        println!("T6 original lines:");
+        for (c,p,dr,cr) in &orig_lines { println!("  {} {:?} Dr={} Cr={}", c,p,dr,cr); }
+        assert!(orig_lines.iter().any(|(c,p,dr,cr)| c=="1100" && *p==Some(cust_id) && *dr==15000 && *cr==0),
+            "Original AR debit must be unchanged");
+        assert!(orig_lines.iter().any(|(c,_,dr,cr)| c=="5000" && *dr==10000 && *cr==0),
+            "Original COGS debit must be unchanged");
+
+        // 6. Inventory fully restored
+        let (qty_final, val_final) = inventory_row(&conn, inv_id);
+        assert_eq!(qty_final, 100, "qty_on_hand must be restored to 100");
+        assert_eq!(val_final, 100000, "total_value_paisa must be restored to 100000");
     }
 
     // Test 7: Payment across two open invoices — AR balance correct; FIFO allocation missing
@@ -668,6 +749,7 @@ mod tests {
             date: "2026-01-01".into(), total: 100.00, discount: 0.0,
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 10.00, discount: 0.0, total: 100.00 }],
             user_id: Some(1),
+            settlement_account_code: None,
         }).unwrap();
         let inv1_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
 
@@ -677,6 +759,7 @@ mod tests {
             date: "2026-01-05".into(), total: 150.00, discount: 0.0,
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 15.0, rate: 10.00, discount: 0.0, total: 150.00 }],
             user_id: Some(1),
+            settlement_account_code: None,
         }).unwrap();
         let inv2_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
 
@@ -724,6 +807,7 @@ mod tests {
             date: "2026-01-10".into(), total: 150.00, discount: 0.0,
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 15.0, rate: 10.00, discount: 0.0, total: 150.00 }],
             user_id: Some(1),
+            settlement_account_code: None,
         }).unwrap();
 
         // Post backdated invoice dated 2026-01-01 (inserted second but earlier date)
@@ -732,6 +816,7 @@ mod tests {
             date: "2026-01-01".into(), total: 100.00, discount: 0.0,
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 10.00, discount: 0.0, total: 100.00 }],
             user_id: Some(1),
+            settlement_account_code: None,
         }).unwrap();
 
         // Balance at 2026-01-05 should be 10000 (only the backdated invoice ≤ 2026-01-05)
@@ -768,6 +853,7 @@ mod tests {
             date: "2026-01-15".into(), total: 100.00, discount: 0.0,
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 10.00, discount: 0.0, total: 100.00 }],
             user_id: Some(1),
+            settlement_account_code: None,
         };
         let result = create_invoice_inner(&mut conn, payload);
         println!("T9 error: {:?}", result);
@@ -790,5 +876,71 @@ mod tests {
         let (qty, val) = inventory_row(&conn, inv_id);
         assert_eq!(qty, 5, "Inventory qty must be unchanged after failed transaction");
         assert_eq!(val, 5000, "Inventory value must be unchanged after failed transaction");
+    }
+
+    // WAC sell-through: buying 3 units for ₹10.00 and selling 1+1+1 must leave val=0 and COGS=1000
+    #[test]
+    fn t_wac_no_residue_on_sell_through() {
+        // ROUND(1000*1/3)=333 → val=667
+        // ROUND(667*1/2)=334  → val=333
+        // ROUND(333*1/1)=333  → val=0
+        // total COGS = 333+334+333 = 1000
+        let mut conn = open_test_db();
+        let cust_id = seed_customer(&conn);
+        let sup_id = seed_supplier(&conn);
+
+        conn.execute(
+            "INSERT INTO inventory (name, qty_on_hand, total_value_paisa, cost_price, sale_price)
+             VALUES ('Triplet', 0, 0, 0, 0)",
+            [],
+        ).unwrap();
+        let inv_id = conn.last_insert_rowid();
+
+        use crate::invoices::{create_invoice_inner, InvoiceData, InvoiceItemData};
+
+        // Purchase 3 units, line total = ₹10.00 (1000 paisa)
+        create_invoice_inner(&mut conn, InvoiceData {
+            invoice_type: "purchase".into(), account_id: sup_id,
+            date: "2026-01-01".into(), total: 10.00, discount: 0.0,
+            items: vec![InvoiceItemData {
+                inventory_id: inv_id, quantity: 3.0, rate: 3.34, discount: 0.0, total: 10.00,
+            }],
+            user_id: Some(1),
+            settlement_account_code: None,
+        }).unwrap();
+
+        let (q, v) = inventory_row(&conn, inv_id);
+        assert_eq!(q, 3);
+        assert_eq!(v, 1000);
+
+        let mut total_cogs: i64 = 0;
+
+        for (day, expected_cogs) in [("2026-01-02", 333i64), ("2026-01-03", 334), ("2026-01-04", 333)] {
+            create_invoice_inner(&mut conn, InvoiceData {
+                invoice_type: "sale".into(), account_id: cust_id,
+                date: day.into(), total: 5.00, discount: 0.0,
+                items: vec![InvoiceItemData {
+                    inventory_id: inv_id, quantity: 1.0, rate: 5.00, discount: 0.0, total: 5.00,
+                }],
+                user_id: Some(1),
+                settlement_account_code: None,
+            }).unwrap();
+
+            let je_id = last_je_id(&conn);
+            let lines = ledger_lines(&conn, je_id);
+            let cogs = lines.iter()
+                .find(|(c, _, dr, _)| c == "5000" && *dr > 0)
+                .map(|(_, _, dr, _)| *dr)
+                .unwrap_or(0);
+            println!("sell on {}: COGS={} expected={}", day, cogs, expected_cogs);
+            assert_eq!(cogs, expected_cogs, "COGS for sale on {} should be {}", day, expected_cogs);
+            total_cogs += cogs;
+        }
+
+        let (qty_final, val_final) = inventory_row(&conn, inv_id);
+        println!("final: qty={} val={} total_cogs={}", qty_final, val_final, total_cogs);
+        assert_eq!(qty_final, 0, "qty_on_hand should be 0 after sell-through");
+        assert_eq!(val_final, 0, "total_value_paisa should be 0 after sell-through — no WAC residue");
+        assert_eq!(total_cogs, 1000, "total COGS must equal original purchase cost 1000 paisa");
     }
 }
