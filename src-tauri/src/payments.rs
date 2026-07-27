@@ -1,6 +1,6 @@
 use crate::db::DbState;
 use crate::journal::{post_journal_entry, JournalLine};
-use rusqlite::params;
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -16,9 +16,7 @@ pub struct Payment {
     pub user_id: Option<i64>,
 }
 
-#[tauri::command]
-pub fn create_payment(state: State<'_, DbState>, payload: Payment) -> Result<String, String> {
-    let mut conn = state.0.lock().unwrap();
+pub fn create_payment_inner(conn: &mut Connection, payload: Payment) -> Result<String, String> {
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| e.to_string())?;
@@ -110,6 +108,12 @@ pub fn create_payment(state: State<'_, DbState>, payload: Payment) -> Result<Str
 
     tx.commit().map_err(|e| e.to_string())?;
     Ok("Payment recorded successfully".to_string())
+}
+
+#[tauri::command]
+pub fn create_payment(state: State<'_, DbState>, payload: Payment) -> Result<String, String> {
+    let mut conn = state.0.lock().unwrap();
+    create_payment_inner(&mut conn, payload)
 }
 
 #[tauri::command]
