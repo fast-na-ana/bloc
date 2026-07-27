@@ -103,7 +103,7 @@ export function LedgerScreen({ currentUser }: LedgerScreenProps) {
       await invoke("update_credit_limit", {
         accountId: selectedAccount.id,
         newLimit: Number(newLimit),
-        password: "admin",
+        currentRole: currentUser?.role ?? "",
       });
       alert("Credit Limit successfully updated!");
       setIsModalOpen(false);
