@@ -36,6 +36,7 @@ pub fn run() {
             invoices::get_accounts,
             invoices::get_inventory,
             invoices::create_invoice,
+            invoices::void_invoice,
             invoices::create_account,
             invoices::create_inventory_item,
             invoices::update_credit_limit,

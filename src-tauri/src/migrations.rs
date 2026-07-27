@@ -345,6 +345,15 @@ const MIGRATIONS: &[&str] = &[
     COMMIT;
     PRAGMA foreign_keys = ON;
     ",
+
+    // v12 — drop redundant explicit unique index on payments.tid
+    // (the column's UNIQUE constraint already provides an autoindex; two unique indexes
+    //  on the same column waste space and slow writes)
+    "DROP INDEX IF EXISTS idx_payments_tid;",
+
+    // v13 — cash sale support: nullable settlement account on invoices
+    // NULL = credit sale (AR); non-null = cash sale settled to that account code
+    "ALTER TABLE invoices ADD COLUMN settlement_account_code TEXT;",
 ];
 
 pub fn run(conn: &Connection) -> Result<()> {

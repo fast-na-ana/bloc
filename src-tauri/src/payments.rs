@@ -56,25 +56,73 @@ pub fn create_payment_inner(conn: &mut Connection, payload: Payment) -> Result<S
     let payment_id = tx.last_insert_rowid();
 
     // Post double-entry journal
-    // Receipt: customer pays us → Dr Cash/Bank (settlement), Cr AR
+    // Receipt: customer pays us → Dr Cash/Bank (settlement), Cr AR (or Cr 2200 if overpayment)
     // Payment: we pay supplier → Dr AP, Cr Cash/Bank (settlement)
     if created_by > 0 {
         let settle = payload.settlement_account_code.clone();
         let lines: Vec<JournalLine> = match payload.payment_type.as_str() {
-            "receipt" => vec![
-                JournalLine {
+            "receipt" => {
+                // FIFO: collect open sale invoices before any inserts to release the borrow
+                let open_invoices: Vec<(i64, i64)> = {
+                    let mut stmt = tx
+                        .prepare(
+                            "SELECT i.id, i.total - COALESCE(SUM(pa.amount), 0) AS open_amount
+                             FROM invoices i
+                             LEFT JOIN payment_allocations pa ON pa.invoice_id = i.id
+                             WHERE i.account_id = ?1 AND i.type = 'sale' AND i.voided_at IS NULL
+                             GROUP BY i.id
+                             HAVING open_amount > 0
+                             ORDER BY i.date ASC, i.id ASC",
+                        )
+                        .map_err(|e| e.to_string())?;
+                    let result: Vec<(i64, i64)> =
+                        stmt.query_map(params![payload.account_id], |r| Ok((r.get(0)?, r.get(1)?)))
+                        .map_err(|e| e.to_string())?
+                        .filter_map(|r| r.ok())
+                        .collect();
+                    result
+                };
+
+                let mut remaining = amount_paisa;
+                for (inv_id, open_amount) in &open_invoices {
+                    if remaining <= 0 {
+                        break;
+                    }
+                    let alloc = remaining.min(*open_amount);
+                    tx.execute(
+                        "INSERT INTO payment_allocations (payment_id, invoice_id, amount) VALUES (?1, ?2, ?3)",
+                        params![payment_id, inv_id, alloc],
+                    )
+                    .map_err(|e| e.to_string())?;
+                    remaining -= alloc;
+                }
+
+                let overpayment = remaining; // > 0 when payment exceeds total open AR
+                let ar_credit = amount_paisa - overpayment;
+                let mut v = vec![JournalLine {
                     account_code: settle,
                     party_id: None,
                     debit: amount_paisa,
                     credit: 0,
-                },
-                JournalLine {
-                    account_code: "1100".into(),
-                    party_id: Some(payload.account_id),
-                    debit: 0,
-                    credit: amount_paisa,
-                },
-            ],
+                }];
+                if ar_credit > 0 {
+                    v.push(JournalLine {
+                        account_code: "1100".into(),
+                        party_id: Some(payload.account_id),
+                        debit: 0,
+                        credit: ar_credit,
+                    });
+                }
+                if overpayment > 0 {
+                    v.push(JournalLine {
+                        account_code: "2200".into(),
+                        party_id: Some(payload.account_id),
+                        debit: 0,
+                        credit: overpayment,
+                    });
+                }
+                v
+            }
             "payment" => vec![
                 JournalLine {
                     account_code: "2000".into(),
