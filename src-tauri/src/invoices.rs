@@ -1,6 +1,6 @@
 use crate::db::DbState;
 use crate::journal::{post_journal_entry, JournalLine};
-use rusqlite::params;
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -92,9 +92,7 @@ pub fn get_inventory(state: State<'_, DbState>) -> Result<Vec<InventoryItem>, St
     Ok(out)
 }
 
-#[tauri::command]
-pub fn create_invoice(state: State<'_, DbState>, payload: InvoiceData) -> Result<String, String> {
-    let mut conn = state.0.lock().unwrap();
+pub fn create_invoice_inner(conn: &mut Connection, payload: InvoiceData) -> Result<String, String> {
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| e.to_string())?;
@@ -368,6 +366,12 @@ pub fn create_invoice(state: State<'_, DbState>, payload: InvoiceData) -> Result
 
     tx.commit().map_err(|e| e.to_string())?;
     Ok(format!("Successfully created/merged invoice #{}", invoice_id))
+}
+
+#[tauri::command]
+pub fn create_invoice(state: State<'_, DbState>, payload: InvoiceData) -> Result<String, String> {
+    let mut conn = state.0.lock().unwrap();
+    create_invoice_inner(&mut conn, payload)
 }
 
 #[tauri::command]

@@ -1,6 +1,6 @@
 use crate::db::DbState;
 use crate::journal::{post_journal_entry, JournalLine};
-use rusqlite::params;
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -22,9 +22,7 @@ pub struct Reminder {
     pub status: String,
 }
 
-#[tauri::command]
-pub fn create_expense(state: State<'_, DbState>, payload: Expense) -> Result<String, String> {
-    let mut conn = state.0.lock().unwrap();
+pub fn create_expense_inner(conn: &mut Connection, payload: Expense) -> Result<String, String> {
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| e.to_string())?;
@@ -71,6 +69,12 @@ pub fn create_expense(state: State<'_, DbState>, payload: Expense) -> Result<Str
 
     tx.commit().map_err(|e| e.to_string())?;
     Ok("Expense logged successfully".to_string())
+}
+
+#[tauri::command]
+pub fn create_expense(state: State<'_, DbState>, payload: Expense) -> Result<String, String> {
+    let mut conn = state.0.lock().unwrap();
+    create_expense_inner(&mut conn, payload)
 }
 
 #[tauri::command]
