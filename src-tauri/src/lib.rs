@@ -1,4 +1,5 @@
 pub mod db;
+pub mod migrations;
 pub mod backup;
 pub mod invoices;
 pub mod expenses;
@@ -7,6 +8,7 @@ pub mod payments;
 pub mod analytics;
 pub mod assets;
 pub mod auth;
+pub mod journal;
 
 use tauri::Manager;
 
@@ -54,7 +56,8 @@ pub fn run() {
             auth::check_has_users,
             auth::setup_admin,
             auth::login,
-            auth::create_user
+            auth::create_user,
+            journal::post_manual_journal
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
