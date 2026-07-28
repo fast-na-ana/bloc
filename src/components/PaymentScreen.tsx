@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "./ui/EmptyState";
 import { Receipt, ShoppingBag, Plus } from "lucide-react";
+import { fmt } from "@/lib/format";
 
 interface Account {
   id: number;
@@ -215,7 +216,7 @@ export function PaymentScreen() {
                     </TableCell>
                     <TableCell className="text-slate-600 font-medium">{pay.bank_cash_name}</TableCell>
                     <TableCell className={`text-right font-extrabold text-base ${pay.payment_type === 'receipt' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {pay.payment_type === 'receipt' ? '+' : '-'}${pay.amount.toFixed(2)}
+                      {pay.payment_type === 'receipt' ? '+' : '-'}{fmt(pay.amount)}
                     </TableCell>
                   </TableRow>
                 ))}

@@ -40,6 +40,7 @@ pub struct InvoiceData {
     pub items: Vec<InvoiceItemData>,
     pub user_id: Option<i64>,
     pub settlement_account_code: Option<String>, // None = credit sale (AR); Some = cash sale
+    pub original_invoice_id: Option<i64>,        // required for sale_return / purchase_return
 }
 
 #[tauri::command]
@@ -102,8 +103,11 @@ pub fn create_invoice_inner(conn: &mut Connection, payload: InvoiceData) -> Resu
     let discount_paisa = (payload.discount * 100.0).round() as i64;
     let created_by = payload.user_id.unwrap_or(0);
 
-    // Auto-merge: same date + account + type
-    let existing_id: Option<i64> = {
+    // Auto-merge: same date + account + type — skipped for returns (each is a distinct document)
+    let is_return = matches!(payload.invoice_type.as_str(), "sale_return" | "purchase_return");
+    let existing_id: Option<i64> = if is_return {
+        None
+    } else {
         let mut stmt = tx
             .prepare(
                 "SELECT id FROM invoices WHERE account_id=?1 AND date=?2 AND type=?3 LIMIT 1",
@@ -119,28 +123,29 @@ pub fn create_invoice_inner(conn: &mut Connection, payload: InvoiceData) -> Resu
         }
     };
 
-    let invoice_id = if let Some(id) = existing_id {
+    let (invoice_id, is_new) = if let Some(id) = existing_id {
         tx.execute(
             "UPDATE invoices SET total = total + ?1, discount = discount + ?2 WHERE id = ?3",
             params![total_paisa, discount_paisa, id],
         )
         .map_err(|e| e.to_string())?;
-        id
+        (id, false)
     } else {
         tx.execute(
-            "INSERT INTO invoices (type, account_id, date, total, discount, settlement_account_code)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO invoices (type, account_id, date, total, discount, settlement_account_code, original_invoice_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 payload.invoice_type,
                 payload.account_id,
                 payload.date,
                 total_paisa,
                 discount_paisa,
-                payload.settlement_account_code
+                payload.settlement_account_code,
+                payload.original_invoice_id
             ],
         )
         .map_err(|e| e.to_string())?;
-        tx.last_insert_rowid()
+        (tx.last_insert_rowid(), true)
     };
 
     let mut cogs_paisa: i64 = 0;
@@ -203,18 +208,69 @@ pub fn create_invoice_inner(conn: &mut Connection, payload: InvoiceData) -> Resu
                     (None, item.quantity.round() as i64, line_total_paisa)
                 }
                 "sale_return" => {
-                    // Restore inventory at original cost from the most recent matching sale line.
-                    // Partial returns use proportional reversal: ROUND(orig_total * ret_qty / orig_qty).
+                    let orig_inv_id = payload.original_invoice_id.ok_or_else(|| {
+                        "sale_return requires original_invoice_id".to_string()
+                    })?;
+
+                    // Validate original invoice is a non-voided sale
+                    let (orig_type, orig_voided): (String, bool) = tx
+                        .query_row(
+                            "SELECT type, voided_at IS NOT NULL FROM invoices WHERE id = ?1",
+                            params![orig_inv_id],
+                            |r| Ok((r.get(0)?, r.get::<_, bool>(1)?)),
+                        )
+                        .map_err(|_| format!("Original invoice {} not found", orig_inv_id))?;
+                    if orig_voided {
+                        return Err(format!(
+                            "Cannot return against voided invoice {}",
+                            orig_inv_id
+                        ));
+                    }
+                    if orig_type != "sale" {
+                        return Err(format!(
+                            "Invoice {} is not a sale (type={})",
+                            orig_inv_id, orig_type
+                        ));
+                    }
+
+                    // Fetch cost_at_sale and quantity from the original sale line
                     let (orig_cost_total, orig_qty): (i64, f64) = tx
                         .query_row(
-                            "SELECT COALESCE(ii.cost_at_sale, 0), ii.quantity
-                             FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id
-                             WHERE ii.inventory_id = ?1 AND i.type = 'sale' AND i.voided_at IS NULL
-                             ORDER BY ii.id DESC LIMIT 1",
-                            params![item.inventory_id],
+                            "SELECT COALESCE(cost_at_sale, 0), quantity
+                             FROM invoice_items
+                             WHERE invoice_id = ?1 AND inventory_id = ?2",
+                            params![orig_inv_id, item.inventory_id],
                             |r| Ok((r.get(0)?, r.get(1)?)),
                         )
-                        .unwrap_or((0, item.quantity));
+                        .map_err(|_| format!(
+                            "Item {} not found on invoice {}",
+                            item.inventory_id, orig_inv_id
+                        ))?;
+
+                    // Ensure cumulative returned qty does not exceed original qty
+                    let already_returned: f64 = tx
+                        .query_row(
+                            "SELECT COALESCE(SUM(ri.quantity), 0)
+                             FROM invoices ret
+                             JOIN invoice_items ri ON ri.invoice_id = ret.id
+                             WHERE ret.original_invoice_id = ?1
+                               AND ri.inventory_id = ?2
+                               AND ret.voided_at IS NULL",
+                            params![orig_inv_id, item.inventory_id],
+                            |r| r.get(0),
+                        )
+                        .unwrap_or(0.0);
+                    let remaining = orig_qty - already_returned;
+                    if item.quantity > remaining + 0.001 {
+                        return Err(format!(
+                            "Return qty {:.4} exceeds remaining returnable {:.4} \
+                             (original {:.4} already returned {:.4}) for item {} on invoice {}",
+                            item.quantity, remaining, orig_qty, already_returned,
+                            item.inventory_id, orig_inv_id
+                        ));
+                    }
+
+                    // Proportional COGS reversal from the original sale line total
                     let cogs_reversal = if orig_qty > 0.0 {
                         (orig_cost_total as f64 * item.quantity / orig_qty).round() as i64
                     } else {
@@ -283,7 +339,7 @@ pub fn create_invoice_inner(conn: &mut Connection, payload: InvoiceData) -> Resu
     // Zero-value COGS lines are excluded because the ledger_entries CHECK constraint
     // requires (debit > 0 AND credit = 0) OR (credit > 0 AND debit = 0).
     // purchase, sale_return, and purchase_return have no COGS lines in their fixed sets.
-    let lines: Vec<JournalLine> = match payload.invoice_type.as_str() {
+    let mut lines: Vec<JournalLine> = match payload.invoice_type.as_str() {
         "sale" => {
             let mut v = match &payload.settlement_account_code {
                 None => {
@@ -419,6 +475,65 @@ pub fn create_invoice_inner(conn: &mut Connection, payload: InvoiceData) -> Resu
 
     // Only post journal if we have a real user (skip for legacy data without user context)
     if created_by > 0 {
+        // Advance auto-application: new credit sales only.
+        // If the customer has unallocated prior overpayments (sitting in 2200), apply them
+        // to this invoice now. Lines are appended to the invoice JE so void automatically
+        // reverses them via mirror-flip. Writes payment_allocations with source='advance'
+        // so FIFO sees the correct open amount for future receipts.
+        if is_new && payload.invoice_type == "sale" && payload.settlement_account_code.is_none() {
+            let unallocated: Vec<(i64, i64)> = {
+                let mut stmt = tx
+                    .prepare(
+                        "SELECT p.id, p.amount - COALESCE(SUM(pa.amount), 0) AS unalloc
+                         FROM payments p
+                         LEFT JOIN payment_allocations pa ON pa.payment_id = p.id
+                         WHERE p.account_id = ?1 AND p.type = 'receipt' AND p.voided_at IS NULL
+                         GROUP BY p.id
+                         HAVING unalloc > 0
+                         ORDER BY p.document_date ASC, p.id ASC",
+                    )
+                    .map_err(|e| e.to_string())?;
+                let result: Vec<(i64, i64)> = stmt
+                    .query_map(params![payload.account_id], |r| Ok((r.get(0)?, r.get(1)?)))
+                    .map_err(|e| e.to_string())?
+                    .filter_map(|r| r.ok())
+                    .collect();
+                result
+            };
+
+            let mut advance_applied: i64 = 0;
+            let mut remaining_open = total_paisa;
+            for (pay_id, unalloc) in &unallocated {
+                if remaining_open <= 0 {
+                    break;
+                }
+                let apply = remaining_open.min(*unalloc);
+                tx.execute(
+                    "INSERT INTO payment_allocations (payment_id, invoice_id, amount, allocation_source) \
+                     VALUES (?1, ?2, ?3, 'advance')",
+                    params![pay_id, invoice_id, apply],
+                )
+                .map_err(|e| e.to_string())?;
+                remaining_open -= apply;
+                advance_applied += apply;
+            }
+
+            if advance_applied > 0 {
+                lines.push(JournalLine {
+                    account_code: "2200".into(),
+                    party_id: Some(payload.account_id),
+                    debit: advance_applied,
+                    credit: 0,
+                });
+                lines.push(JournalLine {
+                    account_code: "1100".into(),
+                    party_id: Some(payload.account_id),
+                    debit: 0,
+                    credit: advance_applied,
+                });
+            }
+        }
+
         post_journal_entry(
             &tx,
             &payload.date,
@@ -451,16 +566,54 @@ pub fn void_invoice_inner(
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| e.to_string())?;
 
-    let (invoice_type, already_voided): (String, bool) = tx
+    let (invoice_type, _account_id, already_voided): (String, i64, bool) = tx
         .query_row(
-            "SELECT type, voided_at IS NOT NULL FROM invoices WHERE id = ?1",
+            "SELECT type, account_id, voided_at IS NOT NULL FROM invoices WHERE id = ?1",
             params![invoice_id],
-            |r| Ok((r.get(0)?, r.get::<_, bool>(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, bool>(2)?)),
         )
         .map_err(|e| format!("Invoice {} not found: {}", invoice_id, e))?;
 
     if already_voided {
         return Err(format!("Invoice {} is already voided", invoice_id));
+    }
+
+    // Block only on 'payment'-source allocations.
+    // 'advance'-source allocations are cleaned up below; the JE reversal restores 2200.
+    let alloc_sum: i64 = tx
+        .query_row(
+            "SELECT COALESCE(SUM(amount), 0) FROM payment_allocations \
+             WHERE invoice_id = ?1 AND allocation_source = 'payment'",
+            params![invoice_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if alloc_sum > 0 {
+        return Err(format!(
+            "Cannot void invoice {}: {} paisa of payments are allocated to it. \
+             Void the payment(s) first.",
+            invoice_id, alloc_sum
+        ));
+    }
+
+    // Block void if any unvoided returns reference this invoice via original_invoice_id.
+    // Applies to both sales and purchases; returns of returns don't exist.
+    if matches!(invoice_type.as_str(), "sale" | "purchase") {
+        let return_count: i64 = tx
+            .query_row(
+                "SELECT COUNT(*) FROM invoices \
+                 WHERE original_invoice_id = ?1 AND voided_at IS NULL",
+                params![invoice_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if return_count > 0 {
+            return Err(format!(
+                "Cannot void invoice {}: it has {} unvoided return(s) against it. \
+                 Void the return invoice(s) first.",
+                invoice_id, return_count
+            ));
+        }
     }
 
     tx.execute(
@@ -489,11 +642,22 @@ pub fn void_invoice_inner(
         )
         .map_err(|e| e.to_string())?;
 
-    // Collect original ledger lines, then release the borrow
+    // Delete advance allocations. The JE reversal (below) already posts Dr 1100 / Cr 2200
+    // to restore the advance, so keeping the allocation row would make the payment look
+    // partially unallocated again when it is not.
+    tx.execute(
+        "DELETE FROM payment_allocations WHERE invoice_id = ?1 AND allocation_source = 'advance'",
+        params![invoice_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Collect original ledger lines, then release the borrow.
+    // Use posted_ledger_entries so we only mirror-flip lines that are actually posted;
+    // an unposted JE (shouldn't exist for invoices, but guards against data races) is ignored.
     let reversal_lines: Vec<JournalLine> = {
         let mut stmt = tx
             .prepare(
-                "SELECT account_code, party_id, debit, credit FROM ledger_entries
+                "SELECT account_code, party_id, debit, credit FROM posted_ledger_entries
                  WHERE journal_entry_id = ?1 ORDER BY id",
             )
             .map_err(|e| e.to_string())?;
@@ -609,12 +773,6 @@ pub fn create_inventory_item(
     Ok("Inventory item created successfully".to_string())
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct PaybackMetrics {
-    pub average_days: f64,
-    pub late_payments: i32,
-}
-
 #[tauri::command]
 pub fn update_credit_limit(
     state: State<'_, DbState>,
@@ -635,41 +793,54 @@ pub fn update_credit_limit(
     Ok("Credit limit updated successfully".to_string())
 }
 
-#[tauri::command]
-pub fn analyze_payback_behavior(
-    state: State<'_, DbState>,
-    account_id: i64,
-) -> Result<PaybackMetrics, String> {
-    let conn = state.0.lock().unwrap();
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AccountSummary {
+    pub account_id: i64,
+    pub outstanding: f64, // rupees; positive = owes us (AR) or we owe them (AP)
+}
 
+#[tauri::command]
+pub fn get_account_summaries(state: State<'_, DbState>) -> Result<Vec<AccountSummary>, String> {
+    let conn = state.0.lock().unwrap();
     let mut stmt = conn
         .prepare(
-            "SELECT AVG(julianday(p.document_date) - julianday(i.date))
-             FROM invoices i
-             JOIN payments p ON p.account_id = i.account_id
-             WHERE i.account_id = ?1
-               AND i.type = 'sale'
-               AND p.type = 'receipt'
-               AND p.document_date >= i.date",
+            "SELECT a.id, a.type,
+                COALESCE(
+                    CASE
+                        WHEN a.type = 'customer'
+                            THEN SUM(le.debit) - SUM(le.credit)
+                        WHEN a.type = 'supplier'
+                            THEN SUM(le.credit) - SUM(le.debit)
+                        ELSE 0
+                    END,
+                0) AS outstanding_paisa
+             FROM accounts a
+             LEFT JOIN posted_ledger_entries le
+                ON le.party_id = a.id
+                AND le.account_code = CASE
+                    WHEN a.type = 'customer' THEN '1100'
+                    WHEN a.type = 'supplier' THEN '2000'
+                    ELSE NULL
+                END
+             GROUP BY a.id, a.type",
         )
         .map_err(|e| e.to_string())?;
 
-    let avg_days: f64 = stmt
-        .query_row(params![account_id], |r| Ok(r.get(0).unwrap_or(0.0)))
-        .unwrap_or(0.0);
-
-    let mut stmt2 = conn
-        .prepare(
-            "SELECT count(*) FROM reminders WHERE account_id = ?1 AND date(due_date) < date('now')",
-        )
+    let iter = stmt
+        .query_map([], |row| {
+            Ok(AccountSummary {
+                account_id: row.get(0)?,
+                outstanding: row.get::<_, i64>(2)? as f64 / 100.0,
+            })
+        })
         .map_err(|e| e.to_string())?;
 
-    let late_payments: i32 = stmt2
-        .query_row(params![account_id], |r| Ok(r.get(0).unwrap_or(0)))
-        .unwrap_or(0);
-
-    Ok(PaybackMetrics {
-        average_days: avg_days.round(),
-        late_payments,
-    })
+    let mut list = Vec::new();
+    for item in iter {
+        if let Ok(val) = item {
+            list.push(val);
+        }
+    }
+    Ok(list)
 }
+

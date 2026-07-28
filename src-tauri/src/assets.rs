@@ -14,9 +14,10 @@ pub struct FixedAsset {
 #[tauri::command]
 pub fn create_asset(state: State<'_, DbState>, payload: FixedAsset) -> Result<String, String> {
     let conn = state.0.lock().unwrap();
+    let value_paisa = (payload.value * 100.0).round() as i64;
     conn.execute(
-        "INSERT INTO assets (name, value, depreciation_rate) VALUES (?1, ?2, ?3)",
-        params![payload.name, payload.value, payload.depreciation_rate],
+        "INSERT INTO assets (name, value_paisa, depreciation_rate) VALUES (?1, ?2, ?3)",
+        params![payload.name, value_paisa, payload.depreciation_rate],
     ).map_err(|e| e.to_string())?;
 
     Ok("Asset registered successfully".to_string())
@@ -26,7 +27,7 @@ pub fn create_asset(state: State<'_, DbState>, payload: FixedAsset) -> Result<St
 pub fn get_assets(state: State<'_, DbState>) -> Result<Vec<FixedAsset>, String> {
     let conn = state.0.lock().unwrap();
     let mut stmt = conn
-        .prepare("SELECT id, name, value, depreciation_rate FROM assets")
+        .prepare("SELECT id, name, value_paisa, depreciation_rate FROM assets")
         .map_err(|e| e.to_string())?;
 
     let iter = stmt
@@ -34,7 +35,7 @@ pub fn get_assets(state: State<'_, DbState>) -> Result<Vec<FixedAsset>, String> 
             Ok(FixedAsset {
                 id: Some(row.get(0)?),
                 name: row.get(1)?,
-                value: row.get(2)?,
+                value: row.get::<_, i64>(2)? as f64 / 100.0,
                 depreciation_rate: row.get(3)?,
             })
         })

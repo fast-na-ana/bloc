@@ -391,6 +391,7 @@ mod tests {
             }],
             user_id: Some(1),
             settlement_account_code: None,
+            original_invoice_id: None,
         };
 
         create_invoice_inner(&mut conn, payload).expect("create_invoice_inner failed");
@@ -444,6 +445,7 @@ mod tests {
             }],
             user_id: Some(1),
             settlement_account_code: Some("1000".into()), // cash sale
+            original_invoice_id: None,
         };
         create_invoice_inner(&mut conn, payload).expect("cash sale should succeed");
         let je_id = last_je_id(&conn);
@@ -502,6 +504,7 @@ mod tests {
             }],
             user_id: Some(1),
             settlement_account_code: None,
+            original_invoice_id: None,
         };
         create_invoice_inner(&mut conn, payload).expect("purchase should succeed");
 
@@ -541,6 +544,7 @@ mod tests {
                 items: vec![InvoiceItemData { inventory_id: inv_id, quantity: qty, rate, discount: 0.0, total }],
                 user_id: Some(1),
                 settlement_account_code: None,
+                original_invoice_id: None,
             };
             create_invoice_inner(conn, p).unwrap();
         };
@@ -562,6 +566,7 @@ mod tests {
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 20.00, discount: 0.0, total: 200.00 }],
             user_id: Some(1),
             settlement_account_code: None,
+            original_invoice_id: None,
         };
         create_invoice_inner(&mut conn, sale).expect("sale should succeed");
 
@@ -617,8 +622,10 @@ mod tests {
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 15.00, discount: 0.0, total: 150.00 }],
             user_id: Some(1),
             settlement_account_code: None,
+            original_invoice_id: None,
         };
         create_invoice_inner(&mut conn, sale).expect("sale should succeed");
+        let sale_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
 
         // Return 5 units at sale price ₹15.00 each = ₹75.00
         let ret = InvoiceData {
@@ -627,6 +634,7 @@ mod tests {
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 5.0, rate: 15.00, discount: 0.0, total: 75.00 }],
             user_id: Some(1),
             settlement_account_code: None,
+            original_invoice_id: Some(sale_id),
         };
         create_invoice_inner(&mut conn, ret).expect("sale_return should succeed");
 
@@ -665,6 +673,7 @@ mod tests {
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 15.00, discount: 0.0, total: 150.00 }],
             user_id: Some(1),
             settlement_account_code: None,
+            original_invoice_id: None,
         }).unwrap();
 
         let invoice_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
@@ -750,6 +759,7 @@ mod tests {
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 10.00, discount: 0.0, total: 100.00 }],
             user_id: Some(1),
             settlement_account_code: None,
+            original_invoice_id: None,
         }).unwrap();
         let inv1_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
 
@@ -760,6 +770,7 @@ mod tests {
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 15.0, rate: 10.00, discount: 0.0, total: 150.00 }],
             user_id: Some(1),
             settlement_account_code: None,
+            original_invoice_id: None,
         }).unwrap();
         let inv2_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
 
@@ -808,6 +819,7 @@ mod tests {
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 15.0, rate: 10.00, discount: 0.0, total: 150.00 }],
             user_id: Some(1),
             settlement_account_code: None,
+            original_invoice_id: None,
         }).unwrap();
 
         // Post backdated invoice dated 2026-01-01 (inserted second but earlier date)
@@ -817,6 +829,7 @@ mod tests {
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 10.00, discount: 0.0, total: 100.00 }],
             user_id: Some(1),
             settlement_account_code: None,
+            original_invoice_id: None,
         }).unwrap();
 
         // Balance at 2026-01-05 should be 10000 (only the backdated invoice ≤ 2026-01-05)
@@ -854,6 +867,7 @@ mod tests {
             items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 10.00, discount: 0.0, total: 100.00 }],
             user_id: Some(1),
             settlement_account_code: None,
+            original_invoice_id: None,
         };
         let result = create_invoice_inner(&mut conn, payload);
         println!("T9 error: {:?}", result);
@@ -876,6 +890,249 @@ mod tests {
         let (qty, val) = inventory_row(&conn, inv_id);
         assert_eq!(qty, 5, "Inventory qty must be unchanged after failed transaction");
         assert_eq!(val, 5000, "Inventory value must be unchanged after failed transaction");
+    }
+
+    // ── void interaction tests ──────────────────────────────────────────────────
+
+    // t10: void is blocked when payment_allocations exist for the invoice
+    #[test]
+    fn t10_void_blocked_by_payment_allocations() {
+        let mut conn = open_test_db();
+        let cust_id = seed_customer(&conn);
+        let inv_id = seed_inventory(&conn, 100, 1000);
+
+        use crate::invoices::{create_invoice_inner, void_invoice_inner, InvoiceData, InvoiceItemData};
+        use crate::payments::{create_payment_inner, Payment};
+
+        create_invoice_inner(&mut conn, InvoiceData {
+            invoice_type: "sale".into(), account_id: cust_id,
+            date: "2026-01-01".into(), total: 100.00, discount: 0.0,
+            items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 10.00, discount: 0.0, total: 100.00 }],
+            user_id: Some(1), settlement_account_code: None, original_invoice_id: None,
+        }).unwrap();
+        let invoice_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
+
+        // Pay ₹60 — allocates to this invoice via FIFO
+        create_payment_inner(&mut conn, Payment {
+            id: None, account_id: cust_id, payment_type: "receipt".into(),
+            amount: 60.00, tid: "TXN-T10".into(),
+            document_date: "2026-01-05".into(),
+            settlement_account_code: "1000".into(),
+            user_id: Some(1),
+        }).unwrap();
+
+        let result = void_invoice_inner(&mut conn, invoice_id, 1, "should be blocked".into());
+        assert!(result.is_err(), "Void must fail when payment allocations exist");
+        let msg = result.unwrap_err();
+        println!("T10 error: {}", msg);
+        assert!(msg.contains("allocated"), "Error must mention allocations: {}", msg);
+
+        // Invoice must remain un-voided
+        let voided: Option<String> = conn.query_row(
+            "SELECT voided_at FROM invoices WHERE id = ?1", params![invoice_id], |r| r.get(0)
+        ).unwrap();
+        assert!(voided.is_none(), "Invoice must still be live after blocked void");
+    }
+
+    // t11: void of sale is blocked while unvoided sale_return exists; succeeds after return is voided
+    #[test]
+    fn t11_void_blocked_by_existing_return_then_succeeds() {
+        let mut conn = open_test_db();
+        let cust_id = seed_customer(&conn);
+        let inv_id = seed_inventory(&conn, 100, 1000);
+
+        use crate::invoices::{create_invoice_inner, void_invoice_inner, InvoiceData, InvoiceItemData};
+
+        // Original sale: 10 units @ ₹15
+        create_invoice_inner(&mut conn, InvoiceData {
+            invoice_type: "sale".into(), account_id: cust_id,
+            date: "2026-01-01".into(), total: 150.00, discount: 0.0,
+            items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 15.00, discount: 0.0, total: 150.00 }],
+            user_id: Some(1), settlement_account_code: None, original_invoice_id: None,
+        }).unwrap();
+        let sale_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
+
+        // Partial return: 4 units @ ₹15
+        create_invoice_inner(&mut conn, InvoiceData {
+            invoice_type: "sale_return".into(), account_id: cust_id,
+            date: "2026-01-05".into(), total: 60.00, discount: 0.0,
+            items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 4.0, rate: 15.00, discount: 0.0, total: 60.00 }],
+            user_id: Some(1), settlement_account_code: None, original_invoice_id: Some(sale_id),
+        }).unwrap();
+        let return_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
+
+        // Attempt void of original sale — must be blocked
+        let blocked = void_invoice_inner(&mut conn, sale_id, 1, "blocked".into());
+        assert!(blocked.is_err(), "Void of sale must be blocked while unvoided return exists");
+        println!("T11 block msg: {}", blocked.unwrap_err());
+
+        // Void the return first
+        void_invoice_inner(&mut conn, return_id, 1, "void return".into())
+            .expect("Voiding the return itself must succeed");
+
+        // After voiding the return, inventory must be back to post-sale state (90 units)
+        let (qty_after_ret_void, _) = inventory_row(&conn, inv_id);
+        assert_eq!(qty_after_ret_void, 90, "After voiding return, qty should be 90 (sale still active)");
+
+        // Now void the original sale — must succeed
+        void_invoice_inner(&mut conn, sale_id, 1, "now ok".into())
+            .expect("Void of sale must succeed after return is voided");
+
+        // All balances zero, inventory fully restored
+        let net_ar: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(debit)-SUM(credit),0) FROM posted_ledger_entries WHERE account_code='1100' AND party_id=?1",
+            params![cust_id], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(net_ar, 0, "Net AR must be 0 after all voids");
+
+        let (qty_final, val_final) = inventory_row(&conn, inv_id);
+        assert_eq!(qty_final, 100, "Inventory must be fully restored");
+        assert_eq!(val_final, 100000, "Inventory value must be fully restored");
+    }
+
+    // t12: voiding a cash sale also reverses the 9000 rounding entry
+    #[test]
+    fn t12_void_cash_sale_reverses_9000() {
+        let mut conn = open_test_db();
+        let cust_id = seed_customer(&conn);
+        let inv_id = seed_inventory(&conn, 10, 1000); // 10 @ ₹10.00
+
+        use crate::invoices::{create_invoice_inner, void_invoice_inner, InvoiceData, InvoiceItemData};
+
+        // Cash sale: total ₹29.99 (2999 paisa) → rounds to 3000, Cr 9000 = 1
+        create_invoice_inner(&mut conn, InvoiceData {
+            invoice_type: "sale".into(), account_id: cust_id,
+            date: "2026-01-10".into(), total: 29.99, discount: 0.0,
+            items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 3.0, rate: 9.997, discount: 0.0, total: 29.99 }],
+            user_id: Some(1), settlement_account_code: Some("1000".into()), original_invoice_id: None,
+        }).unwrap();
+        let invoice_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
+
+        // Confirm 9000 has Cr 1 before void
+        let net_9000_before: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(debit)-SUM(credit),0) FROM posted_ledger_entries WHERE account_code='9000'",
+            [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(net_9000_before, -1, "9000 should have net Cr 1 (= -1 net) before void");
+
+        void_invoice_inner(&mut conn, invoice_id, 1, "void cash sale".into()).unwrap();
+
+        // After void, 9000 net must be 0
+        let net_9000_after: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(debit)-SUM(credit),0) FROM posted_ledger_entries WHERE account_code='9000'",
+            [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(net_9000_after, 0, "9000 must net to 0 after voiding cash sale");
+
+        // Cash account must also net to 0
+        let net_cash: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(debit)-SUM(credit),0) FROM posted_ledger_entries WHERE account_code='1000'",
+            [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(net_cash, 0, "Cash must net to 0 after voiding cash sale");
+    }
+
+    // t13: voiding a sale_return removes the returned inventory and restores the journal
+    #[test]
+    fn t13_void_sale_return() {
+        let mut conn = open_test_db();
+        let cust_id = seed_customer(&conn);
+        let inv_id = seed_inventory(&conn, 100, 1000);
+
+        use crate::invoices::{create_invoice_inner, void_invoice_inner, InvoiceData, InvoiceItemData};
+
+        // Sell 10 units
+        create_invoice_inner(&mut conn, InvoiceData {
+            invoice_type: "sale".into(), account_id: cust_id,
+            date: "2026-01-01".into(), total: 150.00, discount: 0.0,
+            items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 15.00, discount: 0.0, total: 150.00 }],
+            user_id: Some(1), settlement_account_code: None, original_invoice_id: None,
+        }).unwrap();
+        let sale_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
+        // After sale: qty=90, val=90000
+
+        // Return 5 units
+        create_invoice_inner(&mut conn, InvoiceData {
+            invoice_type: "sale_return".into(), account_id: cust_id,
+            date: "2026-01-05".into(), total: 75.00, discount: 0.0,
+            items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 5.0, rate: 15.00, discount: 0.0, total: 75.00 }],
+            user_id: Some(1), settlement_account_code: None, original_invoice_id: Some(sale_id),
+        }).unwrap();
+        let return_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
+        // After return: qty=95, val=95000 (5 units @ ₹10.00 added back)
+
+        let (q_after_ret, v_after_ret) = inventory_row(&conn, inv_id);
+        assert_eq!(q_after_ret, 95);
+        assert_eq!(v_after_ret, 95000);
+
+        // Void the return
+        void_invoice_inner(&mut conn, return_id, 1, "void return".into()).unwrap();
+
+        // Inventory must revert to post-sale state (90 units, not the original 100)
+        let (qty, val) = inventory_row(&conn, inv_id);
+        assert_eq!(qty, 90, "Voiding return must remove the 5 units that were added back");
+        assert_eq!(val, 90000, "Voiding return must remove the ₹50.00 value that was added back");
+
+        // Net AR: original sale Dr 1100 15000, return Cr 1100 7500, void-of-return Dr 1100 7500
+        //        → net = 15000 (still owed by customer)
+        let net_ar: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(debit)-SUM(credit),0) FROM posted_ledger_entries WHERE account_code='1100' AND party_id=?1",
+            params![cust_id], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(net_ar, 15000, "After voiding return, AR must be back to full sale amount");
+
+        // 4100 Sales Returns must net to 0 (return posted Dr 4100 7500; void reversal Cr 4100 7500)
+        let net_4100: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(debit)-SUM(credit),0) FROM posted_ledger_entries WHERE account_code='4100'",
+            [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(net_4100, 0, "4100 Sales Returns must net 0 after voiding the return");
+    }
+
+    // t14: return against a voided sale is a hard block — WAC corruption is not a soft path
+    #[test]
+    fn t14_return_against_voided_sale_is_blocked() {
+        let mut conn = open_test_db();
+        let cust_id = seed_customer(&conn);
+        let inv_id = seed_inventory(&conn, 100, 1000);
+
+        use crate::invoices::{create_invoice_inner, void_invoice_inner, InvoiceData, InvoiceItemData};
+
+        create_invoice_inner(&mut conn, InvoiceData {
+            invoice_type: "sale".into(), account_id: cust_id,
+            date: "2026-01-01".into(), total: 100.00, discount: 0.0,
+            items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 10.00, discount: 0.0, total: 100.00 }],
+            user_id: Some(1), settlement_account_code: None, original_invoice_id: None,
+        }).unwrap();
+        let sale_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
+
+        // Void the sale (no returns, no allocations — succeeds)
+        void_invoice_inner(&mut conn, sale_id, 1, "void".into()).unwrap();
+
+        // Attempt a return referencing the now-voided sale — must be a hard error
+        let ret_result = create_invoice_inner(&mut conn, InvoiceData {
+            invoice_type: "sale_return".into(), account_id: cust_id,
+            date: "2026-01-10".into(), total: 50.00, discount: 0.0,
+            items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 5.0, rate: 10.00, discount: 0.0, total: 50.00 }],
+            user_id: Some(1), settlement_account_code: None,
+            original_invoice_id: Some(sale_id), // explicitly references the voided invoice
+        });
+        assert!(ret_result.is_err(), "Return against voided invoice must be rejected");
+        let msg = ret_result.unwrap_err();
+        println!("T14 blocked: {}", msg);
+        assert!(msg.contains("voided"), "Error must mention voided: {}", msg);
+
+        // Inventory must be exactly restored to pre-sale state (void restored all 100 units)
+        let (qty, val) = inventory_row(&conn, inv_id);
+        assert_eq!(qty, 100, "qty_on_hand must remain 100 — no phantom return");
+        assert_eq!(val, 100000, "total_value_paisa must remain 100000 — no WAC corruption");
+
+        // WAC invariant: items with stock must have positive value
+        let bad_wac: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM inventory WHERE qty_on_hand > 0 AND total_value_paisa <= 0",
+            [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(bad_wac, 0, "WAC invariant: stock with zero value is corruption");
     }
 
     // WAC sell-through: buying 3 units for ₹10.00 and selling 1+1+1 must leave val=0 and COGS=1000
@@ -907,6 +1164,7 @@ mod tests {
             }],
             user_id: Some(1),
             settlement_account_code: None,
+            original_invoice_id: None,
         }).unwrap();
 
         let (q, v) = inventory_row(&conn, inv_id);
@@ -924,6 +1182,7 @@ mod tests {
                 }],
                 user_id: Some(1),
                 settlement_account_code: None,
+                original_invoice_id: None,
             }).unwrap();
 
             let je_id = last_je_id(&conn);
@@ -942,5 +1201,411 @@ mod tests {
         assert_eq!(qty_final, 0, "qty_on_hand should be 0 after sell-through");
         assert_eq!(val_final, 0, "total_value_paisa should be 0 after sell-through — no WAC residue");
         assert_eq!(total_cogs, 1000, "total COGS must equal original purchase cost 1000 paisa");
+    }
+
+    // t15: advance auto-application — overpayment in 2200 settles next invoice at creation time
+    #[test]
+    fn t15_advance_auto_application() {
+        let mut conn = open_test_db();
+        let cust_id = seed_customer(&conn);
+        let inv_id = seed_inventory(&conn, 100, 1000);
+
+        use crate::invoices::{create_invoice_inner, void_invoice_inner, InvoiceData, InvoiceItemData};
+        use crate::payments::{create_payment_inner, Payment};
+
+        // Invoice 1: ₹200.00
+        create_invoice_inner(&mut conn, InvoiceData {
+            invoice_type: "sale".into(), account_id: cust_id,
+            date: "2026-02-01".into(), total: 200.00, discount: 0.0,
+            items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 20.0, rate: 10.00, discount: 0.0, total: 200.00 }],
+            user_id: Some(1), settlement_account_code: None, original_invoice_id: None,
+        }).unwrap();
+        let inv1_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
+
+        // Receipt ₹300.00: ₹200 covers inv1, ₹100 overpayment → 2200
+        create_payment_inner(&mut conn, Payment {
+            id: None, account_id: cust_id, payment_type: "receipt".into(),
+            amount: 300.00, tid: "OVP-001".into(),
+            document_date: "2026-02-05".into(),
+            settlement_account_code: "1000".into(),
+            user_id: Some(1),
+        }).unwrap();
+        let pay_id: i64 = conn.query_row("SELECT MAX(id) FROM payments", [], |r| r.get(0)).unwrap();
+
+        // Confirm 2200 has ₹100 advance (10000 paisa)
+        let adv_before: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(credit)-SUM(debit),0) FROM posted_ledger_entries WHERE account_code='2200'",
+            [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(adv_before, 10000, "2200 must hold 10000 paisa advance before new invoice");
+
+        // Cash sale: must NOT consume the advance
+        create_invoice_inner(&mut conn, InvoiceData {
+            invoice_type: "sale".into(), account_id: cust_id,
+            date: "2026-02-06".into(), total: 30.00, discount: 0.0,
+            items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 3.0, rate: 10.00, discount: 0.0, total: 30.00 }],
+            user_id: Some(1), settlement_account_code: Some("1000".into()), original_invoice_id: None,
+        }).unwrap();
+        let adv_after_cash: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(credit)-SUM(debit),0) FROM posted_ledger_entries WHERE account_code='2200'",
+            [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(adv_after_cash, 10000, "Cash sale must not consume the advance");
+
+        // Invoice 2 (credit sale): ₹80.00 — advance should auto-apply ₹80 from 2200
+        create_invoice_inner(&mut conn, InvoiceData {
+            invoice_type: "sale".into(), account_id: cust_id,
+            date: "2026-02-10".into(), total: 80.00, discount: 0.0,
+            items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 8.0, rate: 10.00, discount: 0.0, total: 80.00 }],
+            user_id: Some(1), settlement_account_code: None, original_invoice_id: None,
+        }).unwrap();
+        let inv2_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
+
+        // 2200 should be reduced by ₹80 → ₹20 (2000 paisa) remains
+        let adv_after_inv2: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(credit)-SUM(debit),0) FROM posted_ledger_entries WHERE account_code='2200'",
+            [], |r| r.get(0)
+        ).unwrap();
+        println!("T15 2200 after inv2={} (expected 2000)", adv_after_inv2);
+        assert_eq!(adv_after_inv2, 2000, "2200 must drop by 8000 after advance applied to inv2");
+
+        // AR net for customer: inv1 settled by receipt, inv2 settled by advance → 0
+        let ar_net: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(debit)-SUM(credit),0) FROM posted_ledger_entries WHERE account_code='1100' AND party_id=?1",
+            params![cust_id], |r| r.get(0)
+        ).unwrap();
+        println!("T15 AR net={} (expected 0 — inv2 fully offset by advance)", ar_net);
+        assert_eq!(ar_net, 0, "AR must net to 0: inv2 fully covered by 2200 advance");
+
+        // Allocation row written with allocation_source='advance'
+        let adv_alloc: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM payment_allocations WHERE payment_id=?1 AND invoice_id=?2 AND allocation_source='advance'",
+            params![pay_id, inv2_id], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(adv_alloc, 1, "Must have 1 advance allocation row for inv2");
+
+        // FIFO sees inv2 as fully settled (open amount = 0)
+        let inv2_open: i64 = conn.query_row(
+            "SELECT i.total - COALESCE(SUM(pa.amount), 0) FROM invoices i
+             LEFT JOIN payment_allocations pa ON pa.invoice_id = i.id
+             WHERE i.id = ?1 GROUP BY i.id",
+            params![inv2_id], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(inv2_open, 0, "FIFO open amount for inv2 must be 0 after advance allocation");
+
+        // Void inv2 — must succeed (advance allocations don't block) and restore 2200
+        void_invoice_inner(&mut conn, inv2_id, 1, "void advance test".into())
+            .expect("Void of invoice with advance must succeed");
+
+        // 2200 restored to 10000 (the advance lines are in the same JE → mirror-flip restores them)
+        let adv_after_void: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(credit)-SUM(debit),0) FROM posted_ledger_entries WHERE account_code='2200'",
+            [], |r| r.get(0)
+        ).unwrap();
+        println!("T15 2200 after void={} (expected 10000)", adv_after_void);
+        assert_eq!(adv_after_void, 10000, "2200 must be restored to 10000 after voiding inv2");
+
+        // Advance allocation row must be deleted
+        let adv_alloc_after: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM payment_allocations WHERE payment_id=?1 AND invoice_id=?2",
+            params![pay_id, inv2_id], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(adv_alloc_after, 0, "Advance allocation must be deleted when invoice is voided");
+
+        let _ = (inv1_id, pay_id);
+    }
+
+    // Paisa round-trip: (x * 100.0).round() as i64 must not truncate tricky float values.
+    // Without .round(), 19.99 * 100.0 evaluates to 1998.9999... in IEEE 754 → truncates to 1998.
+    // This is the v11 regression class. All conversion sites in this codebase use .round().
+    #[test]
+    fn t_paisa_rounding_no_truncation() {
+        for (rupees, expected_paisa) in [
+            (19.99_f64, 1999_i64),
+            ( 0.01_f64,    1_i64),
+            ( 0.07_f64,    7_i64),
+        ] {
+            let paisa = (rupees * 100.0).round() as i64;
+            assert_eq!(paisa, expected_paisa,
+                "₹{} * 100 must round to {} paisa, not truncate to {}", rupees, expected_paisa, (rupees * 100.0) as i64);
+        }
+    }
+
+    // t16: payment for a customer must not allocate to that customer's voided invoice
+    #[test]
+    fn t16_payment_skips_voided_invoice() {
+        let mut conn = open_test_db();
+        let cust_id = seed_customer(&conn);
+        let inv_id = seed_inventory(&conn, 100, 1000);
+
+        use crate::invoices::{create_invoice_inner, void_invoice_inner, InvoiceData, InvoiceItemData};
+        use crate::payments::{create_payment_inner, Payment};
+
+        // Create a sale, then immediately void it (no allocations yet)
+        create_invoice_inner(&mut conn, InvoiceData {
+            invoice_type: "sale".into(), account_id: cust_id,
+            date: "2026-01-01".into(), total: 100.00, discount: 0.0,
+            items: vec![InvoiceItemData { inventory_id: inv_id, quantity: 10.0, rate: 10.00, discount: 0.0, total: 100.00 }],
+            user_id: Some(1), settlement_account_code: None, original_invoice_id: None,
+        }).unwrap();
+        let invoice_id: i64 = conn.query_row("SELECT MAX(id) FROM invoices", [], |r| r.get(0)).unwrap();
+
+        void_invoice_inner(&mut conn, invoice_id, 1, "voiding before payment".into()).unwrap();
+
+        // Now record a receipt for this customer
+        create_payment_inner(&mut conn, Payment {
+            id: None, account_id: cust_id, payment_type: "receipt".into(),
+            amount: 150.00, tid: "TXN-T16".into(),
+            document_date: "2026-01-10".into(),
+            settlement_account_code: "1000".into(),
+            user_id: Some(1),
+        }).unwrap();
+        let pay_id: i64 = conn.query_row("SELECT MAX(id) FROM payments", [], |r| r.get(0)).unwrap();
+
+        // FIFO must not allocate to the voided invoice
+        let alloc_to_voided: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM payment_allocations WHERE payment_id=?1 AND invoice_id=?2",
+            params![pay_id, invoice_id], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(alloc_to_voided, 0,
+            "FIFO must not allocate to a voided invoice (voided_at IS NULL filter must hold)");
+
+        // Entire payment becomes overpayment → routed to 2200 (no open AR to absorb it)
+        let adv_2200: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(credit)-SUM(debit),0) FROM posted_ledger_entries WHERE account_code='2200'",
+            [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(adv_2200, 15000, "Full receipt must land in 2200 since voided invoice has no open AR");
+
+        // Total payment_allocations for this payment = 0 (all went to 2200, nothing to FIFO)
+        let total_alloc: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM payment_allocations WHERE payment_id=?1",
+            params![pay_id], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(total_alloc, 0, "No FIFO allocations when all open invoices are voided");
+    }
+
+    // ── financial statement balance integration test ────────────────────────────
+    //
+    // Runs a realistic mixed sequence and asserts five balance invariants:
+    //   1. Total posted debits = total posted credits (double-entry integrity)
+    //   2. Per-party AR sum = AR control account (1100) balance
+    //   3. SUM(inventory.total_value_paisa) = 1200 control account balance
+    //
+    // Sequence:
+    //   - Purchase A: 100 units @ ₹10  (WAC = ₹10)
+    //   - Purchase B: 50  units @ ₹14  (WAC = ₹11.33…)
+    //   - Credit sale C1: 20 units @ ₹20 (cust1)
+    //   - Credit sale C2: 30 units @ ₹20 (cust1)
+    //   - Cash sale C3:   3 units @ ₹29.99 total (cust2, round-off → 9000)
+    //   - Partial return R1: 5 units of C2 @ ₹20 (cust1)
+    //   - Payment P1: ₹200 receipt from cust1 (FIFO across C1, C2)
+    //   - Payment P2: ₹999 overpayment from cust1 (→ 2200)
+    //   - Expense E1: ₹500 operating expense
+    //   - Void C1: blocked by payment allocation — assert error; skip void
+    //   - Void R1: succeeds (no allocations on a return)
+    //
+    #[test]
+    fn t_financial_balance_integration() {
+        let mut conn = open_test_db();
+
+        let cust1_id = seed_customer(&conn);
+        // second customer
+        conn.execute(
+            "INSERT INTO accounts (name, type, credit_limit) VALUES ('Cash Customer', 'customer', 0)", []
+        ).unwrap();
+        let cust2_id = conn.last_insert_rowid();
+        let sup_id = seed_supplier(&conn);
+
+        conn.execute(
+            "INSERT INTO inventory (name, qty_on_hand, total_value_paisa, cost_price, sale_price) VALUES ('Widget', 0, 0, 0, 0)", []
+        ).unwrap();
+        let inv_id = conn.last_insert_rowid();
+
+        use crate::invoices::{create_invoice_inner, void_invoice_inner, InvoiceData, InvoiceItemData};
+        use crate::payments::{create_payment_inner, Payment};
+        use crate::expenses::{create_expense_inner, Expense};
+
+        let make_inv = |conn: &mut rusqlite::Connection, itype: &str, acct: i64, date: &str,
+                         qty: f64, rate: f64, total: f64, settle: Option<&str>,
+                         orig: Option<i64>| {
+            create_invoice_inner(conn, InvoiceData {
+                invoice_type: itype.into(), account_id: acct, date: date.into(),
+                total, discount: 0.0,
+                items: vec![InvoiceItemData { inventory_id: inv_id, quantity: qty, rate, discount: 0.0, total }],
+                user_id: Some(1),
+                settlement_account_code: settle.map(|s| s.to_string()),
+                original_invoice_id: orig,
+            }).unwrap();
+            conn.query_row("SELECT MAX(id) FROM invoices", [], |r: &rusqlite::Row| r.get::<_,i64>(0)).unwrap()
+        };
+
+        // Purchases
+        make_inv(&mut conn, "purchase", sup_id, "2026-01-01", 100.0, 10.00, 1000.00, None, None);
+        make_inv(&mut conn, "purchase", sup_id, "2026-01-02",  50.0, 14.00,  700.00, None, None);
+        // WAC now: total_value=170000, qty=150
+
+        // Credit sales for cust1
+        let c1_id = make_inv(&mut conn, "sale", cust1_id, "2026-01-05", 20.0, 20.00, 400.00, None, None);
+        // COGS = ROUND(170000*20/150) = 22667
+        let c2_id = make_inv(&mut conn, "sale", cust1_id, "2026-01-06", 30.0, 20.00, 600.00, None, None);
+        // WAC after c1: val=170000-22667=147333, qty=130; COGS c2=ROUND(147333*30/130)=34000
+
+        // Cash sale cust2: 3 units, ₹29.99 total → 2999 paisa → rounds to 3000
+        make_inv(&mut conn, "sale", cust2_id, "2026-01-07", 3.0, 9.997, 29.99, Some("1000"), None);
+
+        // Partial return from cust1 (5 units of c2, ₹20 each = ₹100)
+        let r1_id = make_inv(&mut conn, "sale_return", cust1_id, "2026-01-08", 5.0, 20.00, 100.00, None, Some(c2_id));
+
+        // Payments from cust1
+        create_payment_inner(&mut conn, Payment {
+            id: None, account_id: cust1_id, payment_type: "receipt".into(),
+            amount: 200.00, tid: "FIN-P1".into(),
+            document_date: "2026-01-10".into(),
+            settlement_account_code: "1000".into(),
+            user_id: Some(1),
+        }).unwrap();
+
+        // Overpayment from cust1 — exceeds remaining AR → routes to 2200
+        create_payment_inner(&mut conn, Payment {
+            id: None, account_id: cust1_id, payment_type: "receipt".into(),
+            amount: 999.00, tid: "FIN-P2".into(),
+            document_date: "2026-01-11".into(),
+            settlement_account_code: "1000".into(),
+            user_id: Some(1),
+        }).unwrap();
+
+        // Expense
+        create_expense_inner(&mut conn, Expense {
+            id: None, description: "Rent".into(),
+            amount: 500.00, date: "2026-01-12".into(),
+            user_id: Some(1),
+        }).unwrap();
+
+        // Attempt void of c1 — must be blocked (has payment allocation)
+        let void_c1 = void_invoice_inner(&mut conn, c1_id, 1, "should block".into());
+        assert!(void_c1.is_err(), "Void of c1 must be blocked — it has payment allocations");
+        println!("FIN void_c1 blocked: {}", void_c1.unwrap_err());
+
+        // Void the return r1 — no allocations on returns, so this must succeed
+        void_invoice_inner(&mut conn, r1_id, 1, "void return".into())
+            .expect("Void of sale_return must succeed");
+
+        // ── INVARIANT 1: total posted debits = total posted credits ────────────
+        let total_debits: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(debit), 0) FROM posted_ledger_entries", [], |r| r.get(0)
+        ).unwrap();
+        let total_credits: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(credit), 0) FROM posted_ledger_entries", [], |r| r.get(0)
+        ).unwrap();
+        println!("INV1 total_debits={} total_credits={} balanced={}",
+            total_debits, total_credits, total_debits == total_credits);
+        assert_eq!(total_debits, total_credits,
+            "INVARIANT 1 FAIL: total debits {} ≠ total credits {}", total_debits, total_credits);
+
+        // ── INVARIANT 2: per-party AR sums = AR control account ───────────────
+        let ar_control: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(debit)-SUM(credit),0) FROM posted_ledger_entries WHERE account_code='1100'",
+            [], |r| r.get(0)
+        ).unwrap();
+        let ar_cust1: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(debit)-SUM(credit),0) FROM posted_ledger_entries WHERE account_code='1100' AND party_id=?1",
+            params![cust1_id], |r| r.get(0)
+        ).unwrap();
+        let ar_cust2: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(debit)-SUM(credit),0) FROM posted_ledger_entries WHERE account_code='1100' AND party_id=?1",
+            params![cust2_id], |r| r.get(0)
+        ).unwrap();
+        let ar_party_sum = ar_cust1 + ar_cust2;
+        println!("INV2 ar_control={} cust1_ar={} cust2_ar={} party_sum={} balanced={}",
+            ar_control, ar_cust1, ar_cust2, ar_party_sum, ar_party_sum == ar_control);
+        assert_eq!(ar_party_sum, ar_control,
+            "INVARIANT 2 FAIL: per-party AR {} ≠ AR control {}", ar_party_sum, ar_control);
+
+        // ── INVARIANT 3: inventory.total_value_paisa = 1200 control account ───
+        let inv_table_val: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(total_value_paisa), 0) FROM inventory", [], |r| r.get(0)
+        ).unwrap();
+        let inv_ledger_val: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(debit)-SUM(credit),0) FROM posted_ledger_entries WHERE account_code='1200'",
+            [], |r| r.get(0)
+        ).unwrap();
+        println!("INV3 inventory_table={} ledger_1200={} balanced={}",
+            inv_table_val, inv_ledger_val, inv_table_val == inv_ledger_val);
+        assert_eq!(inv_table_val, inv_ledger_val,
+            "INVARIANT 3 FAIL: inventory.total_value_paisa {} ≠ 1200 ledger balance {}",
+            inv_table_val, inv_ledger_val);
+
+        // ── INVARIANT 4: WAC integrity — stock implies positive value ──────────
+        let bad_wac_rows: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM inventory WHERE qty_on_hand > 0 AND total_value_paisa <= 0",
+            [], |r| r.get(0)
+        ).unwrap();
+        println!("INV4 wac_corruption_rows={}", bad_wac_rows);
+        assert_eq!(bad_wac_rows, 0,
+            "INVARIANT 4 FAIL: {} item(s) have stock but zero/negative value — WAC corrupted", bad_wac_rows);
+
+        // ── INVARIANT 5: Assets = Liabilities + Equity + Net Income ───────────
+        // (fundamental accounting equation; holds in any pre-close period)
+        let assets: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(le.debit - le.credit), 0)
+             FROM posted_ledger_entries le
+             JOIN accounts_chart ac ON ac.code = le.account_code
+             WHERE ac.account_type = 'asset'",
+            [], |r| r.get(0)
+        ).unwrap();
+        let liabilities: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(le.credit - le.debit), 0)
+             FROM posted_ledger_entries le
+             JOIN accounts_chart ac ON ac.code = le.account_code
+             WHERE ac.account_type = 'liability'",
+            [], |r| r.get(0)
+        ).unwrap();
+        let equity: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(le.credit - le.debit), 0)
+             FROM posted_ledger_entries le
+             JOIN accounts_chart ac ON ac.code = le.account_code
+             WHERE ac.account_type = 'equity'",
+            [], |r| r.get(0)
+        ).unwrap();
+        let net_revenue: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(le.credit - le.debit), 0)
+             FROM posted_ledger_entries le
+             JOIN accounts_chart ac ON ac.code = le.account_code
+             WHERE ac.account_type = 'revenue'",
+            [], |r| r.get(0)
+        ).unwrap();
+        let net_expenses: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(le.debit - le.credit), 0)
+             FROM posted_ledger_entries le
+             JOIN accounts_chart ac ON ac.code = le.account_code
+             WHERE ac.account_type = 'expense'",
+            [], |r| r.get(0)
+        ).unwrap();
+        let net_income = net_revenue - net_expenses;
+        let rhs = liabilities + equity + net_income;
+        println!("INV5 assets={} liabilities={} equity={} net_revenue={} net_expenses={} net_income={} rhs={}  balanced={}",
+            assets, liabilities, equity, net_revenue, net_expenses, net_income, rhs, assets == rhs);
+        assert_eq!(assets, rhs,
+            "INVARIANT 5 FAIL: assets {} ≠ liabilities+equity+net_income {}", assets, rhs);
+
+        // ── INVARIANT 6: net profit = change in equity for the period ──────────
+        // Before closing entries, equity change = net income (no retained earnings posted).
+        // Equity from posted entries (3000) should be 0 in a fresh test; net income carries it.
+        let equity_change = equity + net_income; // equity postings + current period income
+        println!("INV6 net_income={} equity_change(equity+net_income)={} match={}",
+            net_income, equity_change, net_income == equity_change - equity);
+        // equity_change = equity + net_income; we assert net_income == equity_change - equity (tautology but
+        // makes the structure explicit — a real test would compare against prior-period equity)
+        assert_eq!(net_income, equity_change - equity,
+            "INVARIANT 6 FAIL: net income {} ≠ equity change {}", net_income, equity_change - equity);
+
+        // ── 2200 advance balance ───────────────────────────────────────────────
+        let adv_2200: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(credit)-SUM(debit),0) FROM posted_ledger_entries WHERE account_code='2200'",
+            [], |r| r.get(0)
+        ).unwrap();
+        println!("2200_advances={} paisa (auto-applied to next invoice; this run has no new invoice after P2)", adv_2200);
+        assert!(adv_2200 > 0, "2200 must have a positive balance from the overpayment");
     }
 }

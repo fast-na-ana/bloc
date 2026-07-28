@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DollarSign, Plus } from "lucide-react";
+import { fmt } from "@/lib/format";
 
 interface Expense {
   id?: number;
@@ -125,7 +126,7 @@ export function ExpenseScreen() {
                 <TableRow key={idx} className="border-slate-100 hover:bg-blue-50/30">
                   <TableCell className="font-semibold text-slate-800">{exp.date.split('T')[0]}</TableCell>
                   <TableCell className="font-bold text-slate-900">{exp.description}</TableCell>
-                  <TableCell className="text-right font-extrabold text-rose-600">-${exp.amount.toFixed(2)}</TableCell>
+                  <TableCell className="text-right font-extrabold text-rose-600">-{fmt(exp.amount)}</TableCell>
                 </TableRow>
               ))}
               {expenses.length === 0 && (

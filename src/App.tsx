@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Layout } from "./components/Layout";
 import { DashboardScreen } from "./components/DashboardScreen";
 import { InvoiceScreen } from "./components/InvoiceScreen";
-import { LedgerScreen } from "./components/LedgerScreen";
+import { ContactsScreen } from "./components/ContactsScreen";
 import { InventoryScreen } from "./components/InventoryScreen";
 import { ExpenseScreen } from "./components/ExpenseScreen";
 import { ReminderScreen } from "./components/ReminderScreen";
@@ -41,8 +41,8 @@ function App() {
         return <PaymentScreen />;
       case "analytics":
         return <AnalyticsScreen />;
-      case "ledger":
-        return <LedgerScreen currentUser={currentUser} />;
+      case "contacts":
+        return <ContactsScreen currentUser={currentUser} />;
       case "inventory":
         return <InventoryScreen />;
       case "expenses":

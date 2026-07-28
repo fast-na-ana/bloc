@@ -90,7 +90,8 @@ pub fn create_payment_inner(conn: &mut Connection, payload: Payment) -> Result<S
                     }
                     let alloc = remaining.min(*open_amount);
                     tx.execute(
-                        "INSERT INTO payment_allocations (payment_id, invoice_id, amount) VALUES (?1, ?2, ?3)",
+                        "INSERT INTO payment_allocations (payment_id, invoice_id, amount, allocation_source) \
+                         VALUES (?1, ?2, ?3, 'payment')",
                         params![payment_id, inv_id, alloc],
                     )
                     .map_err(|e| e.to_string())?;

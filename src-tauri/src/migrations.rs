@@ -354,6 +354,27 @@ const MIGRATIONS: &[&str] = &[
     // v13 — cash sale support: nullable settlement account on invoices
     // NULL = credit sale (AR); non-null = cash sale settled to that account code
     "ALTER TABLE invoices ADD COLUMN settlement_account_code TEXT;",
+
+    // v14 — original_invoice_id links returns to their source invoice
+    // Required for sale_return / purchase_return; NULL for all other types.
+    // Enables precise void blocking and exact COGS reversal from the original line.
+    "ALTER TABLE invoices ADD COLUMN original_invoice_id INTEGER REFERENCES invoices(id);",
+
+    // v15 — allocation_source on payment_allocations
+    // 'payment': written by create_payment_inner FIFO at receipt time
+    // 'advance': written by create_invoice_inner when a prior overpayment (2200) auto-applies
+    // Void checks only block on 'payment' rows; advance rows are deleted during void
+    // because the JE reversal already restores 2200 via mirror-flip of the invoice JE lines.
+    "ALTER TABLE payment_allocations ADD COLUMN allocation_source TEXT NOT NULL DEFAULT 'payment' \
+     CHECK(allocation_source IN ('payment','advance'));",
+
+    // v16 — migrate assets.value (REAL rupees) to INTEGER paisa
+    // assets was the only table still storing money as a floating-point rupee value.
+    // All other monetary columns are INTEGER paisa since v11.
+    // value_paisa replaces value going forward; the old column is kept (SQLite can't drop)
+    // but assets.rs no longer reads or writes it.
+    "ALTER TABLE assets ADD COLUMN value_paisa INTEGER NOT NULL DEFAULT 0; \
+     UPDATE assets SET value_paisa = CAST(ROUND(value * 100) AS INTEGER);",
 ];
 
 pub fn run(conn: &Connection) -> Result<()> {

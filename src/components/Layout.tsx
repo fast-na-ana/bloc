@@ -1,5 +1,5 @@
 import { ReactNode, useState, useRef, useEffect } from "react";
-import { Search, Bell, Grid, Receipt, ShoppingBag, Package, Users, TrendingUp, DollarSign, CreditCard, Settings, LogOut, X, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Search, Bell, Grid, Receipt, ShoppingBag, Package, Users, TrendingUp, DollarSign, Settings, LogOut, X, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 interface LayoutProps {
   children: ReactNode;
@@ -26,7 +26,6 @@ export function Layout({ children, activeView, onNavigate, currentUser, onLogout
 
   const navItemsOthers = [
     { id: "expenses", label: "Expenses", icon: DollarSign, adminOnly: true },
-    { id: "ledger", label: "Credit Limits", icon: CreditCard, adminOnly: true },
     { id: "reminders", label: "Reminders & Log", icon: Bell, adminOnly: false },
     { id: "settings", label: "Settings (Admin)", icon: Settings, adminOnly: true },
   ];

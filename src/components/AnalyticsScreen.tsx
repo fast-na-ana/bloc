@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Printer, TrendingUp, DollarSign, Activity, PieChart, Plus } from "lucide-react";
+import { fmt } from "@/lib/format";
 import { motion } from "framer-motion";
 
 interface DashboardRollup {
@@ -127,7 +128,7 @@ export function AnalyticsScreen() {
             <DollarSign className="h-4 w-4 text-emerald-600" />
           </div>
         </div>
-        <h2 className="text-3xl font-extrabold text-slate-900">${(dashboard?.cash_in_hand || 0).toFixed(2)}</h2>
+        <h2 className="text-3xl font-extrabold text-slate-900">{fmt(dashboard?.cash_in_hand || 0)}</h2>
         <p className="text-xs font-semibold text-slate-500 mt-1">Physical vault & bank balance</p>
       </motion.div>
 
@@ -138,7 +139,7 @@ export function AnalyticsScreen() {
             <Activity className="h-4 w-4 text-blue-600" />
           </div>
         </div>
-        <h2 className="text-3xl font-extrabold text-slate-900">${(dashboard?.monthly_sales || 0).toFixed(2)}</h2>
+        <h2 className="text-3xl font-extrabold text-slate-900">{fmt(dashboard?.monthly_sales || 0)}</h2>
         <p className="text-xs font-semibold text-slate-500 mt-1">Current calendar month revenue</p>
       </motion.div>
 
@@ -150,7 +151,7 @@ export function AnalyticsScreen() {
           </div>
         </div>
         <h2 className={`text-3xl font-extrabold ${(dashboard?.net_profit || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-          ${(dashboard?.net_profit || 0).toFixed(2)}
+          {fmt(dashboard?.net_profit || 0)}
         </h2>
         <p className="text-xs font-semibold text-slate-500 mt-1">Bottom line after COGS & Expenses</p>
       </motion.div>
@@ -175,23 +176,23 @@ export function AnalyticsScreen() {
                 <div className="space-y-4 text-slate-800 font-semibold">
                   <div className="flex justify-between text-base">
                     <span className="text-slate-600">Sales Revenue</span>
-                    <span className="font-extrabold text-slate-900">${income.revenue.toFixed(2)}</span>
+                    <span className="font-extrabold text-slate-900">{fmt(income.revenue)}</span>
                   </div>
                   <div className="flex justify-between text-base text-rose-600">
                     <span>Cost of Goods Sold (COGS)</span>
-                    <span>(-${income.cogs.toFixed(2)})</span>
+                    <span>(-{fmt(income.cogs)})</span>
                   </div>
                   <div className="flex justify-between font-extrabold text-xl border-t border-b border-slate-200 py-3 bg-slate-50/70 px-3 rounded-lg text-slate-900">
                     <span>Gross Profit</span>
-                    <span className="text-blue-600">${income.gross_profit.toFixed(2)}</span>
+                    <span className="text-blue-600">{fmt(income.gross_profit)}</span>
                   </div>
                   <div className="flex justify-between text-base text-rose-600">
                     <span>Operating Expenses</span>
-                    <span>(-${income.operating_expenses.toFixed(2)})</span>
+                    <span>(-{fmt(income.operating_expenses)})</span>
                   </div>
                   <div className="flex justify-between font-extrabold text-2xl border-b-4 border-double border-slate-900 py-3 mt-4 text-blue-600 px-3">
                     <span>Net Profit</span>
-                    <span>${income.net_profit.toFixed(2)}</span>
+                    <span>{fmt(income.net_profit)}</span>
                   </div>
                 </div>
               )}
@@ -210,21 +211,21 @@ export function AnalyticsScreen() {
                   <div className="space-y-4 bg-slate-50/70 p-5 rounded-xl border border-slate-200">
                     <h3 className="font-extrabold text-lg text-slate-900 border-b border-slate-200 pb-2">Assets</h3>
                     <div className="space-y-3 text-sm font-semibold">
-                      <div className="flex justify-between text-slate-700"><span>Cash / Bank</span><span className="font-bold text-slate-900">${balance.cash.toFixed(2)}</span></div>
-                      <div className="flex justify-between text-slate-700"><span>Accounts Receivable</span><span className="font-bold text-slate-900">${balance.accounts_receivable.toFixed(2)}</span></div>
-                      <div className="flex justify-between text-slate-700"><span>Inventory Value (Cost)</span><span className="font-bold text-slate-900">${balance.inventory_value.toFixed(2)}</span></div>
-                      <div className="flex justify-between text-slate-500"><span>Fixed Assets (Depreciated)</span><span className="font-bold text-slate-900">${balance.fixed_assets.toFixed(2)}</span></div>
+                      <div className="flex justify-between text-slate-700"><span>Cash / Bank</span><span className="font-bold text-slate-900">{fmt(balance.cash)}</span></div>
+                      <div className="flex justify-between text-slate-700"><span>Accounts Receivable</span><span className="font-bold text-slate-900">{fmt(balance.accounts_receivable)}</span></div>
+                      <div className="flex justify-between text-slate-700"><span>Inventory Value (Cost)</span><span className="font-bold text-slate-900">{fmt(balance.inventory_value)}</span></div>
+                      <div className="flex justify-between text-slate-500"><span>Fixed Assets (Depreciated)</span><span className="font-bold text-slate-900">{fmt(balance.fixed_assets)}</span></div>
                       <div className="flex justify-between font-extrabold text-base pt-3 border-t border-slate-200 text-blue-600">
                         <span>Total Assets</span>
-                        <span>${(balance.cash + balance.accounts_receivable + balance.inventory_value + balance.fixed_assets).toFixed(2)}</span>
+                        <span>{fmt(balance.cash + balance.accounts_receivable + balance.inventory_value + balance.fixed_assets)}</span>
                       </div>
                     </div>
                   </div>
                   <div className="space-y-4 bg-slate-50/70 p-5 rounded-xl border border-slate-200">
                     <h3 className="font-extrabold text-lg text-slate-900 border-b border-slate-200 pb-2">Liabilities & Equity</h3>
                     <div className="space-y-3 text-sm font-semibold">
-                      <div className="flex justify-between text-slate-700"><span>Accounts Payable</span><span className="font-bold text-slate-900">${balance.accounts_payable.toFixed(2)}</span></div>
-                      <div className="flex justify-between text-slate-700 mt-6 pt-4 border-t border-slate-200"><span>Retained Earnings (Net Profit)</span><span className="font-bold text-blue-600">${income?.net_profit.toFixed(2)}</span></div>
+                      <div className="flex justify-between text-slate-700"><span>Accounts Payable</span><span className="font-bold text-slate-900">{fmt(balance.accounts_payable)}</span></div>
+                      <div className="flex justify-between text-slate-700 mt-6 pt-4 border-t border-slate-200"><span>Retained Earnings (Net Profit)</span><span className="font-bold text-blue-600">{fmt(income?.net_profit ?? 0)}</span></div>
                     </div>
                   </div>
                 </div>
@@ -274,9 +275,9 @@ export function AnalyticsScreen() {
                         return (
                           <TableRow key={idx} className="hover:bg-blue-50/20 border-slate-100">
                             <TableCell className="font-bold text-slate-900">{a.name}</TableCell>
-                            <TableCell className="text-right font-medium text-slate-700">${a.value.toFixed(2)}</TableCell>
+                            <TableCell className="text-right font-medium text-slate-700">{fmt(a.value)}</TableCell>
                             <TableCell className="text-right font-semibold text-slate-600">{a.depreciation_rate}%</TableCell>
-                            <TableCell className="text-right font-extrabold text-blue-600">${bookValue.toFixed(2)}</TableCell>
+                            <TableCell className="text-right font-extrabold text-blue-600">{fmt(bookValue)}</TableCell>
                           </TableRow>
                         );
                       })}
