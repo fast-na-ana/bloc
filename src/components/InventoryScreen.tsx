@@ -2,15 +2,18 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { motion } from "framer-motion";
 import { EmptyState } from "./ui/EmptyState";
-import { PackageOpen, Package, Plus, History } from "lucide-react";
+import { PackageOpen, Package, Plus, History, Minus, Check } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Inventory {
   id: number;
   name: string;
+  item_type: string;
   stock_level: number;
   cost_price: number;
   sale_price: number;
@@ -26,10 +29,7 @@ interface ItemLedgerEntry {
 
 const containerVars = {
   hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.05 }
-  }
+  show: { opacity: 1, transition: { staggerChildren: 0.05 } }
 } as any;
 
 const itemVars = {
@@ -42,13 +42,30 @@ export function InventoryScreen() {
   const [selectedItem, setSelectedItem] = useState<Inventory | null>(null);
   const [ledger, setLedger] = useState<ItemLedgerEntry[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [adjustDialogOpen, setAdjustDialogOpen] = useState(false);
+  
+  const [activeTab, setActiveTab] = useState("raw_material");
 
+  // Create Item Form
   const [name, setName] = useState("");
   const [costPrice, setCostPrice] = useState<number | "">("");
   const [salePrice, setSalePrice] = useState<number | "">("");
 
+  // Adjust Form
+  const [adjustItemId, setAdjustItemId] = useState<string>("");
+  const [adjustQty, setAdjustQty] = useState<number | "">("");
+
+  const loadData = async () => {
+    try {
+      const data = await invoke<Inventory[]>("get_inventory");
+      setInventoryList(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
-    invoke<Inventory[]>("get_inventory").then(setInventoryList).catch(console.error);
+    loadData();
   }, []);
 
   const handleViewLedger = async (item: Inventory) => {
@@ -67,19 +84,45 @@ export function InventoryScreen() {
     try {
       await invoke("create_inventory_item", {
         name,
-        stock_level: 0,
-        cost_price: Number(costPrice),
-        sale_price: Number(salePrice)
+        itemType: activeTab,
+        stockLevel: 0,
+        costPrice: Number(costPrice),
+        salePrice: Number(salePrice)
       });
       setName("");
       setCostPrice("");
       setSalePrice("");
-      const data = await invoke<Inventory[]>("get_inventory");
-      setInventoryList(data);
+      loadData();
     } catch (err) {
       console.error(err);
     }
   };
+
+  const handleAdjustStock = async () => {
+    if (!adjustItemId || adjustQty === "" || Number(adjustQty) <= 0) return;
+    
+    // For raw material (consumption), negative quantity. For product (production), positive quantity.
+    const qtyChange = activeTab === "raw_material" ? -Number(adjustQty) : Number(adjustQty);
+    const reason = activeTab === "raw_material" ? "Log Consumption" : "Log Production";
+    
+    try {
+      await invoke("adjust_inventory_stock", {
+        inventoryId: Number(adjustItemId),
+        qtyChange,
+        reason,
+        userId: 1 // TODO: get real user id
+      });
+      setAdjustDialogOpen(false);
+      setAdjustQty("");
+      setAdjustItemId("");
+      loadData();
+    } catch (err) {
+      console.error(err);
+      alert(err);
+    }
+  };
+
+  const filteredList = inventoryList.filter(i => i.item_type === activeTab);
 
   return (
     <motion.div 
@@ -96,9 +139,9 @@ export function InventoryScreen() {
           </div>
           <div>
             <h1 className="text-2xl font-extrabold text-slate-900 leading-tight">
-              Inventory Management
+              Factory Inventory
             </h1>
-            <p className="text-slate-500 text-sm font-medium">Monitor real-time stock levels, pricing, and item transaction logs</p>
+            <p className="text-slate-500 text-sm font-medium">Manage Raw Materials & Finished Products</p>
           </div>
         </div>
       </motion.div>
@@ -106,11 +149,13 @@ export function InventoryScreen() {
       {/* FORM CARD */}
       <motion.div variants={itemVars} className="col-span-12 lg:col-span-4 glass-widget p-6 hover-lift flex flex-col justify-between">
         <div>
-          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-200 pb-3 mb-4">Add New Item</h2>
+          <h2 className="text-lg font-bold text-slate-900 border-b border-slate-200 pb-3 mb-4">
+            Add New {activeTab === 'raw_material' ? 'Raw Material' : 'Finished Product'}
+          </h2>
           <div className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Item Name</label>
-              <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Premium Widget A" className="bg-white/80 border-slate-200 text-slate-900 font-semibold" />
+              <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Steel Pipe 10mm" className="bg-white/80 border-slate-200 text-slate-900 font-semibold" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
@@ -127,50 +172,65 @@ export function InventoryScreen() {
 
         <div className="pt-6">
           <Button onClick={handleCreate} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md shadow-blue-600/20 transition-all cursor-pointer">
-            <Plus className="h-4 w-4 mr-2" /> Create Item
+            <Plus className="h-4 w-4 mr-2" /> Register Item
           </Button>
         </div>
       </motion.div>
 
       {/* STOCK TABLE CARD */}
       <motion.div variants={itemVars} className="col-span-12 lg:col-span-8 glass-widget p-6 hover-lift flex flex-col">
-        <h2 className="text-lg font-bold text-slate-900 border-b border-slate-200 pb-3 mb-4">Current Stock</h2>
-        {inventoryList.length === 0 ? (
-          <EmptyState icon={PackageOpen} title="No Inventory" description="Your inventory is currently empty. Add products to get started." />
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white/50">
-            <Table>
-              <TableHeader className="bg-slate-100/80">
-                <TableRow className="border-slate-200">
-                  <TableHead className="text-xs font-bold uppercase text-slate-700">Item Name</TableHead>
-                  <TableHead className="text-right text-xs font-bold uppercase text-slate-700">Stock Level</TableHead>
-                  <TableHead className="text-right text-xs font-bold uppercase text-slate-700">Cost Price ($)</TableHead>
-                  <TableHead className="text-right text-xs font-bold uppercase text-slate-700">Sale Price ($)</TableHead>
-                  <TableHead className="w-[100px] text-xs font-bold uppercase text-slate-700 text-center">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {inventoryList.map(item => (
-                  <TableRow key={item.id} className="border-slate-100 hover:bg-blue-50/30">
-                    <TableCell className="font-bold text-slate-900">{item.name}</TableCell>
-                    <TableCell className="text-right">
-                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-extrabold ${item.stock_level < 10 ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
-                        {item.stock_level} units
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right text-slate-600 font-medium">${item.cost_price.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-extrabold text-slate-900">${item.sale_price.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">
-                      <Button variant="ghost" size="sm" onClick={() => handleViewLedger(item)} className="text-blue-600 hover:bg-blue-50 font-bold">
-                        <History className="h-4 w-4 mr-1" /> History
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+        <Tabs defaultValue="raw_material" value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+            <TabsList className="bg-slate-100/80 border border-slate-200/80 p-1 rounded-xl">
+              <TabsTrigger value="raw_material" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white font-semibold rounded-lg text-xs px-4">Raw Materials</TabsTrigger>
+              <TabsTrigger value="product" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white font-semibold rounded-lg text-xs px-4">Finished Products</TabsTrigger>
+            </TabsList>
+            
+            <Button 
+              onClick={() => { setAdjustItemId(""); setAdjustQty(""); setAdjustDialogOpen(true); }}
+              className={`font-semibold shadow-md transition-all cursor-pointer ${activeTab === 'raw_material' ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20 text-white' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20 text-white'}`}
+            >
+              {activeTab === 'raw_material' ? <><Minus className="h-4 w-4 mr-2"/> Log Consumption</> : <><Plus className="h-4 w-4 mr-2"/> Log Production</>}
+            </Button>
           </div>
-        )}
+
+          {filteredList.length === 0 ? (
+            <EmptyState icon={PackageOpen} title="No Items" description="There are no items registered in this category." />
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white/50">
+              <Table>
+                <TableHeader className="bg-slate-100/80">
+                  <TableRow className="border-slate-200">
+                    <TableHead className="text-xs font-bold uppercase text-slate-700">Item Name</TableHead>
+                    <TableHead className="text-right text-xs font-bold uppercase text-slate-700">Stock Level</TableHead>
+                    <TableHead className="text-right text-xs font-bold uppercase text-slate-700">Cost Price</TableHead>
+                    <TableHead className="text-right text-xs font-bold uppercase text-slate-700">Sale Price</TableHead>
+                    <TableHead className="w-[100px] text-xs font-bold uppercase text-slate-700 text-center">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredList.map(item => (
+                    <TableRow key={item.id} className="border-slate-100 hover:bg-blue-50/30">
+                      <TableCell className="font-bold text-slate-900">{item.name}</TableCell>
+                      <TableCell className="text-right">
+                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-extrabold ${item.stock_level < 10 ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
+                          {item.stock_level} units
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right text-slate-600 font-medium">${item.cost_price.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-extrabold text-slate-900">${item.sale_price.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">
+                        <Button variant="ghost" size="sm" onClick={() => handleViewLedger(item)} className="text-blue-600 hover:bg-blue-50 font-bold">
+                          <History className="h-4 w-4 mr-1" /> History
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </Tabs>
       </motion.div>
 
       {/* DIALOG LEDGER */}
@@ -215,7 +275,39 @@ export function InventoryScreen() {
           </div>
         </DialogContent>
       </Dialog>
+      
+      {/* ADJUST STOCK DIALOG */}
+      <Dialog open={adjustDialogOpen} onOpenChange={setAdjustDialogOpen}>
+        <DialogContent className="max-w-md glass-widget bg-white/95 border-slate-200 backdrop-blur-xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
+              {activeTab === 'raw_material' ? 'Log Raw Material Consumption' : 'Log Finished Product'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Select Item</label>
+              <Select value={adjustItemId} onValueChange={setAdjustItemId}>
+                <SelectTrigger className="bg-white border-slate-200 text-slate-900 font-semibold">
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredList.map(item => (
+                    <SelectItem key={item.id} value={item.id.toString()}>{item.name} (Stock: {item.stock_level})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Quantity {activeTab === 'raw_material' ? 'Consumed' : 'Produced'}</label>
+              <Input type="number" value={adjustQty} onChange={e => setAdjustQty(parseFloat(e.target.value) || "")} placeholder="Enter quantity" className="bg-white border-slate-200 text-slate-900 font-semibold" />
+            </div>
+            <Button onClick={handleAdjustStock} className={`w-full text-white font-semibold ${activeTab === 'raw_material' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+              <Check className="h-4 w-4 mr-2" /> Confirm
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }
-

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,7 +36,6 @@ interface PartyDetailProps {
 }
 
 export function PartyDetail({ account, currentUser, onLimitUpdated }: PartyDetailProps) {
-  const [role, setRole] = useState<"customer" | "supplier">("customer");
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [metrics, setMetrics] = useState<PaybackMetrics | null>(null);
   const [limitPassword, setLimitPassword] = useState("");
@@ -44,18 +43,14 @@ export function PartyDetail({ account, currentUser, onLimitUpdated }: PartyDetai
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    invoke<LedgerEntry[]>("get_account_ledger", { accountId: account.id, role })
+    invoke<LedgerEntry[]>("get_account_ledger", { accountId: account.id, role: "dual" })
       .then(setLedger)
       .catch(console.error);
 
-    if (role === "customer") {
-      invoke<PaybackMetrics>("analyze_payback_behavior", { accountId: account.id })
-        .then(setMetrics)
-        .catch(console.error);
-    } else {
-      setMetrics(null);
-    }
-  }, [account.id, role]);
+    invoke<PaybackMetrics>("analyze_payback_behavior", { accountId: account.id })
+      .then(setMetrics)
+      .catch(console.error);
+  }, [account.id]);
 
   const handleUpdateLimit = async () => {
     if (newLimit === "") return;
@@ -87,9 +82,6 @@ export function PartyDetail({ account, currentUser, onLimitUpdated }: PartyDetai
             <Users className="h-5 w-5 text-blue-600" />
             {account.name}
           </h2>
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-1">
-            Account Type: <span className="text-blue-600">{account.account_type}</span>
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
@@ -142,19 +134,10 @@ export function PartyDetail({ account, currentUser, onLimitUpdated }: PartyDetai
         </div>
       </div>
 
-      {/* Ledger tabs */}
-      <Tabs value={role} onValueChange={(v) => setRole(v as "customer" | "supplier")} className="w-full">
-        <TabsList className="bg-slate-100/80 border border-slate-200/80 p-1 rounded-xl mb-4">
-          <TabsTrigger value="customer" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white font-semibold rounded-lg text-xs px-4">Customer Ledger</TabsTrigger>
-          <TabsTrigger value="supplier" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white font-semibold rounded-lg text-xs px-4">Supplier Ledger</TabsTrigger>
-        </TabsList>
-        <TabsContent value="customer" className="mt-0">
-          <LedgerTable entries={ledger} />
-        </TabsContent>
-        <TabsContent value="supplier" className="mt-0">
-          <LedgerTable entries={ledger} />
-        </TabsContent>
-      </Tabs>
+      <div className="w-full">
+        <h3 className="text-lg font-bold text-slate-900 mb-4">Unified Ledger</h3>
+        <LedgerTable entries={ledger} />
+      </div>
     </div>
   );
 }

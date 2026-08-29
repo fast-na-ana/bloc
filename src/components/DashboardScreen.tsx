@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { DollarSign, CheckSquare, Package, Receipt, CreditCard, ArrowUpRight, ShoppingBag } from "lucide-react";
+import { DollarSign, Package, Receipt, CreditCard, ArrowUpRight, ShoppingBag } from "lucide-react";
 
 interface DashboardScreenProps {
   onNavigate?: (view: string) => void;
@@ -9,11 +9,42 @@ interface DashboardScreenProps {
 export function DashboardScreen({ onNavigate }: DashboardScreenProps) {
   const [sales, setSales] = useState(0);
   const [cashOnHand, setCashOnHand] = useState(0);
+  const [todaySales, setTodaySales] = useState(0);
+  const [remindersCount, setRemindersCount] = useState(0);
+  const [lowStockCount, setLowStockCount] = useState(0);
+
+  const [lowStockItems, setLowStockItems] = useState<any[]>([]);
+  const [dailyProfits, setDailyProfits] = useState<any[]>([]);
+  const [overduePayers, setOverduePayers] = useState<any[]>([]);
+  const [recentCash, setRecentCash] = useState<any[]>([]);
+  const [reminders, setReminders] = useState<any[]>([]);
 
   useEffect(() => {
-    // In a real app, fetch these from the backend
-    setSales(3150.00);
-    setCashOnHand(12500.00);
+    import("@tauri-apps/api/core").then(({ invoke }) => {
+      invoke<any>("get_financial_dashboard").then((data) => {
+        if (data) {
+          setCashOnHand(data.cash_in_hand || 0);
+          setSales(data.monthly_sales || 0);
+          setTodaySales(data.today_sales || 0);
+        }
+      }).catch(console.error);
+
+      invoke<any[]>("get_inventory").then((items) => {
+        const lowStock = items.filter(i => i.stock_level < 10);
+        setLowStockCount(lowStock.length);
+        setLowStockItems(lowStock.slice(0, 5));
+      }).catch(console.error);
+
+      invoke<any[]>("get_reminders").then((reminders) => {
+        const pending = reminders.filter(r => r.status === 'pending');
+        setRemindersCount(pending.length);
+        setReminders(pending.slice(0, 5));
+      }).catch(console.error);
+
+      invoke<any[]>("get_daily_profits").then(setDailyProfits).catch(console.error);
+      invoke<any[]>("get_overdue_payers").then(setOverduePayers).catch(console.error);
+      invoke<any[]>("get_recent_cash_transactions").then(setRecentCash).catch(console.error);
+    });
   }, []);
 
   const containerVars = {
@@ -68,11 +99,11 @@ export function DashboardScreen({ onNavigate }: DashboardScreenProps) {
           </div>
           <div>
             <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider block">Pending Reminders</span>
-            <span className="font-extrabold text-slate-900 text-base">5</span>
+            <span className="font-extrabold text-slate-900 text-base">{remindersCount}</span>
           </div>
           <div>
             <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider block">Low Stock</span>
-            <span className="font-extrabold text-rose-600 text-base">10 items</span>
+            <span className="font-extrabold text-rose-600 text-base">{lowStockCount} items</span>
           </div>
         </div>
       </motion.div>
@@ -88,7 +119,7 @@ export function DashboardScreen({ onNavigate }: DashboardScreenProps) {
           <DollarSign className="h-5 w-5" />
           <span className="font-bold text-sm uppercase tracking-wider">Cash Balance</span>
         </div>
-        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">${cashOnHand.toLocaleString(undefined, {minimumFractionDigits: 2})}</h1>
+        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">${cashOnHand.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h1>
         <p className="text-xs font-semibold text-slate-500 mt-2">Local Vault Account</p>
       </motion.div>
 
@@ -107,32 +138,52 @@ export function DashboardScreen({ onNavigate }: DashboardScreenProps) {
           </span>
         </div>
         <div className="flex items-center gap-4 mb-4">
-          <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-blue-600"></div><span className="text-sm text-slate-700 font-medium">Today's Sales</span></div>
-          <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-slate-400"></div><span className="text-sm text-slate-700 font-medium">Today's Purchases</span></div>
+          <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-blue-600"></div><span className="text-sm text-slate-700 font-medium">Daily Profit</span></div>
         </div>
         
-        {/* Abstract Chart */}
+        {/* Dynamic Chart */}
         <div className="flex-1 rounded-xl bg-blue-50/50 border border-blue-100 relative flex items-end p-4 mb-4 min-h-[160px]">
-          <svg className="w-full h-full absolute inset-0 text-blue-600 opacity-70 drop-shadow-md" preserveAspectRatio="none" viewBox="0 0 100 40">
-            <path d="M0 30 Q 20 10, 40 25 T 80 15 T 100 5 L 100 40 L 0 40 Z" fill="url(#chart-gradient)" opacity="0.25"></path>
-            <path d="M0 30 Q 20 10, 40 25 T 80 15 T 100 5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2.5"></path>
-            <path d="M0 35 Q 20 20, 40 30 T 80 25 T 100 20" fill="none" stroke="#94a3b8" strokeLinecap="round" strokeWidth="1.5"></path>
-            <defs>
-              <linearGradient id="chart-gradient" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="currentColor"></stop>
-                <stop offset="100%" stopColor="currentColor" stopOpacity="0"></stop>
-              </linearGradient>
-            </defs>
-          </svg>
+          {dailyProfits.length > 0 ? (
+            <svg className="w-full h-full absolute inset-0 text-blue-600 drop-shadow-md" preserveAspectRatio="none" viewBox="0 0 100 40">
+              <defs>
+                <linearGradient id="chart-gradient" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor="currentColor"></stop>
+                  <stop offset="100%" stopColor="currentColor" stopOpacity="0"></stop>
+                </linearGradient>
+              </defs>
+              {(() => {
+                const max = Math.max(...dailyProfits.map(d => d.profit), 100);
+                const min = Math.min(...dailyProfits.map(d => d.profit), 0);
+                const range = (max - min) || 1;
+                const getX = (i: number) => dailyProfits.length > 1 ? (i / (dailyProfits.length - 1)) * 100 : 50;
+                const getY = (profit: number) => 35 - ((profit - min) / range) * 30;
+                
+                const points = dailyProfits.map((d, i) => `${getX(i)},${getY(d.profit)}`).join(" ");
+                const areaPath = `M${getX(0)},40 L${points.split(" ").map(p => p).join(" L")} L${getX(dailyProfits.length - 1)},40 Z`;
+                
+                return (
+                  <>
+                    <path d={areaPath} fill="url(#chart-gradient)" opacity="0.15"></path>
+                    <polyline points={points} fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5"></polyline>
+                    {dailyProfits.map((d, i) => (
+                       <circle key={i} cx={getX(i)} cy={getY(d.profit)} r="1.5" fill="white" stroke="currentColor" strokeWidth="0.5" />
+                    ))}
+                  </>
+                );
+              })()}
+            </svg>
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm font-semibold">No transactions this month</div>
+          )}
         </div>
         
         <div className="flex justify-between items-end mt-auto">
-          <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Last 7 days</span>
+          <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Current Month</span>
           <div className="text-right">
             <div className="flex items-center justify-end gap-1 text-blue-600 font-bold text-xl">
-              +15% <ArrowUpRight className="h-5 w-5" />
+              ${todaySales.toFixed(2)}
             </div>
-            <span className="text-xs text-slate-500 font-medium">Sales from yesterday</span>
+            <span className="text-xs text-slate-500 font-medium">Today's Sales</span>
           </div>
         </div>
       </motion.div>
@@ -149,22 +200,16 @@ export function DashboardScreen({ onNavigate }: DashboardScreenProps) {
           <span className="text-xs font-bold text-rose-600 bg-rose-100 px-2 py-0.5 rounded-md">Ledger</span>
         </div>
         <div className="space-y-3">
-          <div className="flex justify-between text-sm border-b border-rose-100 pb-2">
-            <span className="text-rose-700 font-bold">ABC Co.</span>
-            <span className="text-rose-600/80 font-medium">25 days</span>
-          </div>
-          <div className="flex justify-between text-sm border-b border-rose-100 pb-2">
-            <span className="text-slate-700 font-medium">J. Smith</span>
-            <span className="text-slate-500">18 days</span>
-          </div>
-          <div className="flex justify-between text-sm border-b border-rose-100 pb-2">
-            <span className="text-slate-700 font-medium">Acme Corp</span>
-            <span className="text-slate-500">12 days</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-700 font-medium">D. Wayne</span>
-            <span className="text-slate-500">5 days</span>
-          </div>
+          {overduePayers.length > 0 ? (
+            overduePayers.map((payer, idx) => (
+              <div key={idx} className={`flex justify-between text-sm ${idx < overduePayers.length - 1 ? 'border-b border-rose-100 pb-2' : ''}`}>
+                <span className={payer.days_old > 30 ? "text-rose-700 font-bold" : "text-slate-700 font-medium"}>{payer.name}</span>
+                <span className={payer.days_old > 30 ? "text-rose-600/80 font-medium" : "text-slate-500"}>{payer.days_old} days</span>
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-4 text-slate-500 text-sm font-semibold">No overdue payers!</div>
+          )}
         </div>
       </motion.div>
 
@@ -183,21 +228,20 @@ export function DashboardScreen({ onNavigate }: DashboardScreenProps) {
           </h2>
           <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Stock</span>
         </div>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
-            <div className="flex items-center gap-3">
-              <div className="w-2.5 h-2.5 rounded-full bg-rose-500"></div>
-              <span className="text-sm font-semibold text-slate-800">Item A</span>
-            </div>
-            <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md">Qty 3</span>
-          </div>
-          <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
-            <div className="flex items-center gap-3">
-              <div className="w-2.5 h-2.5 rounded-full bg-rose-500"></div>
-              <span className="text-sm font-semibold text-slate-800">Item B</span>
-            </div>
-            <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md">Qty 1</span>
-          </div>
+        <div className="space-y-2 flex-1 overflow-y-auto">
+          {lowStockItems.length > 0 ? (
+            lowStockItems.map((item, idx) => (
+              <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-2.5 h-2.5 rounded-full bg-rose-500"></div>
+                  <span className="text-sm font-semibold text-slate-800">{item.name}</span>
+                </div>
+                <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md">Qty {item.stock_level}</span>
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-6 text-slate-500 text-sm font-semibold">No items low on stock</div>
+          )}
         </div>
       </motion.div>
 
@@ -210,23 +254,27 @@ export function DashboardScreen({ onNavigate }: DashboardScreenProps) {
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold text-slate-900">Recent Cash</h2>
-          <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Sales</span>
+          <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Ledger</span>
         </div>
-        <div className="space-y-4">
-          <div className="flex justify-between items-center p-2 rounded-lg bg-emerald-50/60 border border-emerald-100">
-            <div>
-              <p className="text-sm font-bold text-slate-800">Sale Invoice #123</p>
-              <p className="text-xs text-slate-500 font-medium">Cash Sale</p>
-            </div>
-            <p className="text-sm text-emerald-700 font-bold">(+$500.00)</p>
-          </div>
-          <div className="flex justify-between items-center p-2 rounded-lg bg-rose-50/60 border border-rose-100">
-            <div>
-              <p className="text-sm font-bold text-slate-800">Expense Entry #9</p>
-              <p className="text-xs text-slate-500 font-medium">Store Supplies</p>
-            </div>
-            <p className="text-sm text-rose-700 font-bold">(-$150.00)</p>
-          </div>
+        <div className="space-y-3 flex-1 overflow-y-auto">
+          {recentCash.length > 0 ? (
+            recentCash.map((tx, idx) => {
+              const isReceipt = tx.amount > 0;
+              return (
+                <div key={idx} className={`flex justify-between items-center p-2 rounded-lg ${isReceipt ? 'bg-emerald-50/60 border-emerald-100' : 'bg-rose-50/60 border-rose-100'} border`}>
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">{tx.description}</p>
+                    <p className="text-xs text-slate-500 font-medium">{tx.date.split('T')[0]}</p>
+                  </div>
+                  <p className={`text-sm font-bold ${isReceipt ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    ({isReceipt ? '+' : ''}{tx.amount < 0 ? '-' : ''}${Math.abs(tx.amount).toFixed(2)})
+                  </p>
+                </div>
+              );
+            })
+          ) : (
+            <div className="text-center py-6 text-slate-500 text-sm font-semibold">No recent transactions</div>
+          )}
         </div>
       </motion.div>
 
@@ -242,14 +290,16 @@ export function DashboardScreen({ onNavigate }: DashboardScreenProps) {
           <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">View All</span>
         </div>
         <div className="space-y-2 flex-1 overflow-y-auto pr-1">
-          <div className="flex items-start gap-2.5 p-2 rounded-lg bg-blue-50/70 border border-blue-100">
-             <CheckSquare className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-             <span className="text-xs font-semibold text-slate-800">Verify TID #987 from Bank Deposit</span>
-          </div>
-          <div className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-50 border border-slate-100">
-             <div className="h-4 w-4 rounded border-2 border-slate-400 mt-0.5 shrink-0"></div>
-             <span className="text-xs text-slate-700 font-medium">Call Customer Doe re: Dues (30 Days Past)</span>
-          </div>
+          {reminders.length > 0 ? (
+            reminders.map((r, idx) => (
+              <div key={idx} className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-50 border border-slate-100">
+                 <div className="h-4 w-4 rounded border-2 border-slate-400 mt-0.5 shrink-0"></div>
+                 <span className="text-xs text-slate-700 font-medium">{r.note} ({r.due_date.split('T')[0]})</span>
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-6 text-slate-500 text-sm font-semibold">No pending reminders</div>
+          )}
         </div>
       </motion.div>
 

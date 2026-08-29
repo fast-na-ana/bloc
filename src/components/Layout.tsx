@@ -17,8 +17,8 @@ export function Layout({ children, activeView, onNavigate, currentUser, onLogout
 
   const navItemsGeneral = [
     { id: "dashboard", label: "Dashboard", icon: Grid, adminOnly: false },
-    { id: "invoices", label: "Sales", icon: Receipt, adminOnly: false },
-    { id: "payments", label: "Purchases", icon: ShoppingBag, adminOnly: true },
+    { id: "invoices", label: "Invoicing", icon: Receipt, adminOnly: false },
+    { id: "payments", label: "Payments", icon: ShoppingBag, adminOnly: true },
     { id: "inventory", label: "Inventory", icon: Package, adminOnly: true },
     { id: "contacts", label: "Customers & Suppliers", icon: Users, adminOnly: false },
     { id: "analytics", label: "Reports", icon: TrendingUp, adminOnly: true },

@@ -27,7 +27,7 @@ pub fn check_has_users(state: State<'_, DbState>) -> Result<bool, String> {
 
 #[tauri::command]
 pub fn setup_admin(state: State<'_, DbState>, username: String, password_raw: String) -> Result<String, String> {
-    let mut conn = state.0.lock().unwrap();
+    let conn = state.0.lock().unwrap();
     
     // Safety check: Ensure no users exist before creating the first admin
     let count: i64 = conn.query_row("SELECT count(*) FROM users", [], |row| row.get(0)).unwrap_or(0);

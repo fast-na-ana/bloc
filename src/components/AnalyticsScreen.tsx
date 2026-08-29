@@ -1,10 +1,8 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Printer, TrendingUp, DollarSign, Activity, PieChart, Plus } from "lucide-react";
+import { Printer, TrendingUp, DollarSign, Activity, PieChart } from "lucide-react";
 import { fmt } from "@/lib/format";
 import { motion } from "framer-motion";
 
@@ -30,13 +28,6 @@ interface BalanceSheet {
   accounts_payable: number;
 }
 
-interface FixedAsset {
-  id?: number;
-  name: string;
-  value: number;
-  depreciation_rate: number;
-}
-
 const containerVars = {
   hidden: { opacity: 0 },
   show: {
@@ -54,17 +45,12 @@ export function AnalyticsScreen() {
   const [dashboard, setDashboard] = useState<any>(null);
   const [income, setIncome] = useState<any>(null);
   const [balance, setBalance] = useState<any>(null);
-  const [assets, setAssets] = useState<any[]>([]);
-  const [assetName, setAssetName] = useState("");
-  const [assetValue, setAssetValue] = useState<number | "">("");
-  const [depRate, setDepRate] = useState<number | "">("");
 
   const loadData = async () => {
     try {
       setDashboard(await invoke<DashboardRollup>("get_financial_dashboard"));
       setIncome(await invoke<IncomeStatement>("get_income_statement"));
       setBalance(await invoke<BalanceSheet>("get_balance_sheet"));
-      setAssets(await invoke<FixedAsset[]>("get_assets"));
     } catch (err) {
       console.error(err);
     }
@@ -76,23 +62,6 @@ export function AnalyticsScreen() {
 
   const handlePrint = () => {
     window.print();
-  };
-
-  const handleRegisterAsset = async () => {
-    if (!assetName || assetValue === "" || depRate === "") return;
-    try {
-      await invoke("create_asset", {
-        payload: {
-          name: assetName,
-          value: Number(assetValue),
-          depreciation_rate: Number(depRate)
-        }
-      });
-      setAssetName(""); setAssetValue(""); setDepRate("");
-      loadData();
-    } catch (err) {
-      alert(err);
-    }
   };
 
   return (
@@ -162,7 +131,6 @@ export function AnalyticsScreen() {
           <TabsList className="bg-slate-100/80 border border-slate-200/80 p-1 rounded-xl mb-6 no-print">
             <TabsTrigger value="pl" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white font-semibold rounded-lg text-xs px-4">Income Statement (P&L)</TabsTrigger>
             <TabsTrigger value="bs" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white font-semibold rounded-lg text-xs px-4">Balance Sheet</TabsTrigger>
-            <TabsTrigger value="assets" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white font-semibold rounded-lg text-xs px-4">Fixed Assets</TabsTrigger>
           </TabsList>
 
           {/* INCOME STATEMENT */}
@@ -233,65 +201,7 @@ export function AnalyticsScreen() {
             </div>
           </TabsContent>
 
-          {/* FIXED ASSETS */}
-          <TabsContent value="assets" className="no-print">
-            <div className="grid grid-cols-12 gap-6">
-              <div className="col-span-12 lg:col-span-4 bg-white/70 p-5 rounded-xl border border-slate-200 space-y-4">
-                <h3 className="text-base font-bold text-slate-900 border-b border-slate-200 pb-2">Register Asset</h3>
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold uppercase text-slate-600">Asset Name</label>
-                    <Input value={assetName} onChange={(e) => setAssetName(e.target.value)} placeholder="e.g. Delivery Van" className="bg-white border-slate-200 font-semibold" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold uppercase text-slate-600">Value / Cost ($)</label>
-                    <Input type="number" value={assetValue} onChange={(e) => setAssetValue(parseFloat(e.target.value) || "")} className="bg-white border-slate-200 font-semibold" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold uppercase text-slate-600">Depreciation Rate (%)</label>
-                    <Input type="number" value={depRate} onChange={(e) => setDepRate(parseFloat(e.target.value) || "")} placeholder="e.g. 10" className="bg-white border-slate-200 font-semibold" />
-                  </div>
-                  <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer mt-2" onClick={handleRegisterAsset}>
-                    <Plus className="h-4 w-4 mr-2" /> Save Asset
-                  </Button>
-                </div>
-              </div>
 
-              <div className="col-span-12 lg:col-span-8 bg-white/70 p-5 rounded-xl border border-slate-200">
-                <h3 className="text-base font-bold text-slate-900 border-b border-slate-200 pb-2 mb-4">Asset Register</h3>
-                <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white/80">
-                  <Table>
-                    <TableHeader className="bg-slate-100">
-                      <TableRow>
-                        <TableHead className="text-xs font-bold uppercase text-slate-700">Asset Name</TableHead>
-                        <TableHead className="text-right text-xs font-bold uppercase text-slate-700">Cost Value</TableHead>
-                        <TableHead className="text-right text-xs font-bold uppercase text-slate-700">Dep. Rate</TableHead>
-                        <TableHead className="text-right text-xs font-bold uppercase text-slate-700">Book Value</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {assets.map((a, idx) => {
-                        const bookValue = a.value * (1 - (a.depreciation_rate / 100));
-                        return (
-                          <TableRow key={idx} className="hover:bg-blue-50/20 border-slate-100">
-                            <TableCell className="font-bold text-slate-900">{a.name}</TableCell>
-                            <TableCell className="text-right font-medium text-slate-700">{fmt(a.value)}</TableCell>
-                            <TableCell className="text-right font-semibold text-slate-600">{a.depreciation_rate}%</TableCell>
-                            <TableCell className="text-right font-extrabold text-blue-600">{fmt(bookValue)}</TableCell>
-                          </TableRow>
-                        );
-                      })}
-                      {assets.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={4} className="text-center py-6 text-slate-500 font-medium">No fixed assets registered yet.</TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            </div>
-          </TabsContent>
         </Tabs>
       </motion.div>
     </motion.div>

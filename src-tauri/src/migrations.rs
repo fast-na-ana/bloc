@@ -375,6 +375,11 @@ const MIGRATIONS: &[&str] = &[
     // but assets.rs no longer reads or writes it.
     "ALTER TABLE assets ADD COLUMN value_paisa INTEGER NOT NULL DEFAULT 0; \
      UPDATE assets SET value_paisa = CAST(ROUND(value * 100) AS INTEGER);",
+
+    // v17 - item_type on inventory
+    "
+    ALTER TABLE inventory ADD COLUMN item_type TEXT NOT NULL DEFAULT 'product';
+    "
 ];
 
 pub fn run(conn: &Connection) -> Result<()> {

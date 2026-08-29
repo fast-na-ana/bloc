@@ -16,6 +16,7 @@ pub struct Account {
 pub struct InventoryItem {
     pub id: i64,
     pub name: String,
+    pub item_type: String,
     pub stock_level: f64, // mirrors qty_on_hand for frontend compat
     pub cost_price: f64,  // display units
     pub sale_price: f64,  // display units
@@ -72,7 +73,7 @@ pub fn get_accounts(state: State<'_, DbState>) -> Result<Vec<Account>, String> {
 pub fn get_inventory(state: State<'_, DbState>) -> Result<Vec<InventoryItem>, String> {
     let conn = state.0.lock().unwrap();
     let mut stmt = conn
-        .prepare("SELECT id, name, qty_on_hand, cost_price, sale_price FROM inventory")
+        .prepare("SELECT id, name, qty_on_hand, cost_price, sale_price, item_type FROM inventory")
         .map_err(|e| e.to_string())?;
     let iter = stmt
         .query_map([], |row| {
@@ -82,9 +83,56 @@ pub fn get_inventory(state: State<'_, DbState>) -> Result<Vec<InventoryItem>, St
                 stock_level: row.get::<_, i64>(2)? as f64,
                 cost_price: row.get::<_, i64>(3)? as f64 / 100.0,
                 sale_price: row.get::<_, i64>(4)? as f64 / 100.0,
+                item_type: row.get(5)?,
             })
         })
         .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for r in iter {
+        if let Ok(v) = r {
+            out.push(v);
+        }
+    }
+    Ok(out)
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct InvoiceSummary {
+    pub id: i64,
+    pub invoice_type: String, // 'sale', 'purchase', etc
+    pub account_id: i64,
+    pub account_name: String,
+    pub date: String,
+    pub total: f64,
+    pub voided_at: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_invoices(state: State<'_, DbState>) -> Result<Vec<InvoiceSummary>, String> {
+    let conn = state.0.lock().unwrap();
+    let mut stmt = conn
+        .prepare(
+            "SELECT i.id, i.type, i.account_id, a.name, i.date, i.total, i.voided_at
+             FROM invoices i
+             JOIN accounts a ON i.account_id = a.id
+             ORDER BY i.date DESC, i.id DESC"
+        )
+        .map_err(|e| e.to_string())?;
+
+    let iter = stmt
+        .query_map([], |row| {
+            Ok(InvoiceSummary {
+                id: row.get(0)?,
+                invoice_type: row.get(1)?,
+                account_id: row.get(2)?,
+                account_name: row.get(3)?,
+                date: row.get(4)?,
+                total: row.get::<_, i64>(5)? as f64 / 100.0,
+                voided_at: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
     let mut out = Vec::new();
     for r in iter {
         if let Ok(v) = r {
@@ -756,6 +804,7 @@ pub fn create_account(
 pub fn create_inventory_item(
     state: State<'_, DbState>,
     name: String,
+    item_type: String,
     stock_level: f64,
     cost_price: f64,
     sale_price: f64,
@@ -766,8 +815,8 @@ pub fn create_inventory_item(
     let sale_paisa = (sale_price * 100.0).round() as i64;
     let total_val = (cost_paisa as f64 * stock_level).round() as i64;
     conn.execute(
-        "INSERT INTO inventory (name, qty_on_hand, total_value_paisa, cost_price, sale_price) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![name, qty, total_val, cost_paisa, sale_paisa],
+        "INSERT INTO inventory (name, item_type, qty_on_hand, total_value_paisa, cost_price, sale_price) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![name, item_type, qty, total_val, cost_paisa, sale_paisa],
     )
     .map_err(|e| e.to_string())?;
     Ok("Inventory item created successfully".to_string())
@@ -844,3 +893,160 @@ pub fn get_account_summaries(state: State<'_, DbState>) -> Result<Vec<AccountSum
     Ok(list)
 }
 
+#[tauri::command]
+pub fn adjust_inventory_stock(
+    state: State<'_, DbState>,
+    inventory_id: i64,
+    qty_change: f64,
+    reason: String,
+    user_id: i64,
+) -> Result<String, String> {
+    let mut conn = state.0.lock().unwrap();
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+
+    let (_item_type, cost_price, qty_on_hand): (String, f64, i64) = tx.query_row(
+        "SELECT item_type, cost_price / 100.0, qty_on_hand FROM inventory WHERE id = ?1",
+        params![inventory_id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+    ).map_err(|e| e.to_string())?;
+
+    let qty_change_int = qty_change.round() as i64;
+    let new_qty = qty_on_hand + qty_change_int;
+    
+    let new_value_paisa = (new_qty as f64 * cost_price * 100.0).round() as i64;
+
+    tx.execute(
+        "UPDATE inventory SET qty_on_hand = ?1, total_value_paisa = ?2 WHERE id = ?3",
+        params![new_qty, new_value_paisa, inventory_id],
+    ).map_err(|e| e.to_string())?;
+
+    let change_value_paisa = (qty_change_int.abs() as f64 * cost_price * 100.0).round() as i64;
+    
+    if change_value_paisa > 0 {
+        let (dr, cr) = if qty_change_int > 0 {
+            ("1200", "5000") // Add stock: Dr Inventory, Cr COGS
+        } else {
+            ("5000", "1200") // Remove stock: Dr COGS, Cr Inventory
+        };
+
+        let lines = vec![
+            JournalLine {
+                account_code: dr.into(),
+                party_id: None,
+                debit: change_value_paisa,
+                credit: 0,
+            },
+            JournalLine {
+                account_code: cr.into(),
+                party_id: None,
+                debit: 0,
+                credit: change_value_paisa,
+            },
+        ];
+
+        let now_str: String = tx.query_row("SELECT datetime('now', 'localtime')", [], |r| r.get(0)).map_err(|e| e.to_string())?;
+        post_journal_entry(&tx, &now_str, &reason, "adjustment", Some(inventory_id), None, user_id, &lines).map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok("Inventory adjusted".to_string())
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct InvoiceDetailItem {
+    pub id: i64,
+    pub inventory_name: String,
+    pub quantity: f64,
+    pub rate: f64,
+    pub discount: f64,
+    pub total: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct InvoiceDetail {
+    pub id: i64,
+    pub invoice_type: String,
+    pub account_id: i64,
+    pub account_name: String,
+    pub date: String,
+    pub subtotal: f64,
+    pub global_discount: f64,
+    pub grand_total: f64,
+    pub is_cash: bool,
+    pub voided_at: Option<String>,
+    pub items: Vec<InvoiceDetailItem>,
+}
+
+#[tauri::command]
+pub fn get_invoice_details(state: State<'_, DbState>, invoice_id: i64) -> Result<InvoiceDetail, String> {
+    let conn = state.0.lock().unwrap();
+
+    let mut stmt = conn.prepare(
+        "SELECT 
+            i.id, i.type, i.account_id, a.name, i.date, 
+            i.total, i.discount, i.voided_at
+         FROM invoices i
+         JOIN accounts a ON i.account_id = a.id
+         WHERE i.id = ?1"
+    ).map_err(|e| e.to_string())?;
+
+    let mut rows = stmt.query(params![invoice_id]).map_err(|e| e.to_string())?;
+    
+    let row = rows.next().map_err(|e| e.to_string())?.ok_or_else(|| "Invoice not found".to_string())?;
+
+    let id: i64 = row.get(0).unwrap_or(0);
+    let invoice_type: String = row.get(1).unwrap_or_default();
+    let account_id: i64 = row.get(2).unwrap_or(0);
+    let account_name: String = row.get(3).unwrap_or_default();
+    let date: String = row.get(4).unwrap_or_default();
+    
+    let grand_total: f64 = row.get::<_, i64>(5).unwrap_or(0) as f64 / 100.0;
+    let global_discount: f64 = row.get::<_, i64>(6).unwrap_or(0) as f64 / 100.0;
+    let voided_at: Option<String> = row.get(7).unwrap_or(None);
+    
+    let is_cash = account_name.to_lowercase().contains("cash");
+    
+    let mut item_stmt = conn.prepare(
+        "SELECT 
+            ii.id, inv.name, ii.quantity, ii.rate, ii.discount, ii.total
+         FROM invoice_items ii
+         JOIN inventory inv ON ii.inventory_id = inv.id
+         WHERE ii.invoice_id = ?1"
+    ).map_err(|e| e.to_string())?;
+    
+    let item_iter = item_stmt.query_map(params![invoice_id], |r| {
+        Ok(InvoiceDetailItem {
+            id: r.get(0)?,
+            inventory_name: r.get(1)?,
+            quantity: r.get::<_, f64>(2)?,
+            rate: r.get::<_, i64>(3)? as f64 / 100.0,
+            discount: r.get::<_, i64>(4)? as f64 / 100.0,
+            total: r.get::<_, i64>(5)? as f64 / 100.0,
+        })
+    }).map_err(|e| e.to_string())?;
+    
+    let mut items = Vec::new();
+    let mut subtotal = 0.0;
+    for item in item_iter {
+        if let Ok(i) = item {
+            subtotal += i.total;
+            items.push(i);
+        }
+    }
+    
+    Ok(InvoiceDetail {
+        id,
+        invoice_type,
+        account_id,
+        account_name,
+        date,
+        subtotal,
+        global_discount,
+        grand_total,
+        is_cash,
+        voided_at,
+        items,
+    })
+}

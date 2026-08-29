@@ -25,26 +25,22 @@ pub struct ItemLedgerEntry {
 pub fn get_account_ledger(
     state: State<'_, DbState>,
     account_id: i64,
-    role: String,
+    _role: String, // Kept to avoid changing the frontend signature for now, though we will change frontend too
 ) -> Result<Vec<LedgerEntry>, String> {
     let conn = state.0.lock().unwrap();
-
-    // Customers: watch AR (1100). Suppliers: watch AP (2000).
-    // Both filtered by party_id so we get only this counterparty's lines.
-    let account_code = if role == "customer" { "1100" } else { "2000" };
 
     let mut stmt = conn
         .prepare(
             "SELECT le.entry_date, je.description, le.debit, le.credit
              FROM posted_ledger_entries le
              JOIN journal_entries je ON je.id = le.journal_entry_id
-             WHERE le.account_code = ?1 AND le.party_id = ?2
+             WHERE le.account_code IN ('1100', '2000') AND le.party_id = ?1
              ORDER BY le.entry_date ASC, le.journal_entry_id ASC",
         )
         .map_err(|e| e.to_string())?;
 
     let rows: Vec<(String, String, i64, i64)> = stmt
-        .query_map(params![account_code, account_id], |r| {
+        .query_map(params![account_id], |r| {
             Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
         })
         .map_err(|e| e.to_string())?

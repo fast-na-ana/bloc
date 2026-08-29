@@ -128,9 +128,6 @@ export function ContactsScreen({ currentUser }: ContactsScreenProps) {
                           <AlertTriangle className={`h-3.5 w-3.5 shrink-0 ${isActive ? "text-yellow-300" : "text-rose-500"}`} />
                         )}
                       </div>
-                      <span className={`text-xs font-semibold uppercase tracking-wide ${isActive ? "text-blue-100" : "text-slate-500"}`}>
-                        {acc.account_type}
-                      </span>
                     </div>
                     <div className="text-right shrink-0">
                       <div className={`text-sm font-extrabold ${isActive ? "text-white" : outstanding > 0 ? "text-blue-700" : "text-slate-400"}`}>

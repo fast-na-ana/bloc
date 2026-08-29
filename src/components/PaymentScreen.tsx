@@ -22,7 +22,7 @@ interface Payment {
   amount: number;
   tid: string;
   document_date: string;
-  bank_cash_name: string;
+  settlement_account_code: string;
 }
 
 const containerVars = {
@@ -47,7 +47,6 @@ export function PaymentScreen() {
   const [amount, setAmount] = useState<number | "">("");
   const [tid, setTid] = useState("");
   const [documentDate, setDocumentDate] = useState<string>(new Date().toISOString().split("T")[0]);
-  const [bankCashName, setBankCashName] = useState("");
 
   const loadData = async () => {
     try {
@@ -66,8 +65,8 @@ export function PaymentScreen() {
   }, []);
 
   const handleLogPayment = async () => {
-    if (!accountId || !amount || !tid || !documentDate || !bankCashName) {
-      alert("Please fill all fields, including the unique Transaction ID (TID) and Bank/Cash Name.");
+    if (!accountId || !amount || !tid || !documentDate) {
+      alert("Please fill all fields, including the unique Transaction ID (TID).");
       return;
     }
     
@@ -78,14 +77,13 @@ export function PaymentScreen() {
         amount: Number(amount),
         tid,
         document_date: documentDate,
-        bank_cash_name: bankCashName,
+        settlement_account_code: "1000", // Defaulting to main Cash/Bank account
       };
 
       await invoke("create_payment", { payload });
       
       setAmount("");
       setTid("");
-      setBankCashName("");
       loadData();
     } catch (err) {
       alert(err);
@@ -170,11 +168,6 @@ export function PaymentScreen() {
                 className="bg-white/80 border-rose-200 focus:ring-rose-500 text-slate-900 font-semibold"
               />
             </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Bank / Cash Account</label>
-              <Input value={bankCashName} onChange={(e) => setBankCashName(e.target.value)} placeholder="e.g. HBL Main Vault" className="bg-white/80 border-slate-200 text-slate-900 font-semibold" />
-            </div>
           </div>
         </div>
 
@@ -214,7 +207,7 @@ export function PaymentScreen() {
                         {pay.payment_type}
                       </span>
                     </TableCell>
-                    <TableCell className="text-slate-600 font-medium">{pay.bank_cash_name}</TableCell>
+                    <TableCell className="text-slate-600 font-medium">{pay.settlement_account_code}</TableCell>
                     <TableCell className={`text-right font-extrabold text-base ${pay.payment_type === 'receipt' ? 'text-emerald-600' : 'text-rose-600'}`}>
                       {pay.payment_type === 'receipt' ? '+' : '-'}{fmt(pay.amount)}
                     </TableCell>
