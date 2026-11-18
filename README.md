@@ -100,7 +100,7 @@ docs/design/             early UI mock-up
 - [ ] Packaged Windows installer release
 - [ ] Multi-user roles
 
-> A related experiment, [**bloc2**](https://github.com/fast-na-ana/bloc2), explores the same product on top of the open-source Frappe Books codebase.
+> A related experiment, [**Bloc Books**](https://github.com/fast-na-ana/bloc-books), explores the same product on top of the open-source Frappe Books codebase.
 
 ## Contributors
 
